@@ -1,6 +1,6 @@
 # tiny-heliostat design
 
-Status: draft, written before any code (2026-10-11). This is the specification the code will follow; when the two disagree, fix one of them. Sections marked *(later)* are committed to but not part of the first release.
+Status: phases 0 and 1 done (2026-10-11): the firmware builds with every TesserKIT service and both TesserMotion axes; manual and track modes, the sun, night parking and the `/heliostat` tree are host-tested. Not yet on the heliostat. This is the specification the code will follow; when the two disagree, fix one of them. Sections marked *(later)* are committed to but not part of the first release.
 
 tiny-heliostat is [open-heliostat](https://github.com/open-heliostat/open-heliostat/tree/helionext) (branch `helionext`, local clone `~/Dev/open-heliostat`) rebuilt on [TesserKIT](https://github.com/leokeba/TesserKIT) and [TesserMotion](https://github.com/leokeba/TesserMotion) instead of an ESP32-sveltekit fork. It is TesserKIT's phase 3 (TesserKIT DESIGN §10.1, §15) and TesserMotion's first user (TesserMotion DESIGN §14, phase 5). Public repository, MIT license.
 
@@ -219,7 +219,8 @@ Persisted nodes are marked *(p)*. Access: reads are public; operating nodes (mod
   artnet/               azimuth, elevation (writable, °, watched); apply *(p)* enum axes, target; takeover *(p)* boolean
 ```
 
-- `source` and `target` are checked against `directions` (and `Sun` for the source) by a validator. A direction removed later isn't refused retroactively: the state becomes `noDirection`.
+- `mode` has `manual` and `track` so far; `sequence` and `artnet` are added with their phases (adding enum values keeps stored settings valid).
+- `source` and `target` are checked against `directions` (and `Sun` for the source) by a validator. A direction added in a patch can't be named in the same patch: the validator sees the list as it was. `directions` comes before them in the tree, so a stored state loads the list first. A direction removed later isn't refused retroactively: the state becomes `noDirection`.
 - Adding, renaming and removing directions are list writes (TesserAPI §4.4). helionext's `add`, `remove`, `rename`, `set` actions go away.
 
 ### 6.2 TesserMotion and TesserKIT parts
@@ -269,12 +270,13 @@ Served from flash with `dev.web().asset("/ext/<name>.js", ...)`, minified and gz
 ```
 tiny-heliostat/
   docs/DESIGN.md
-  CMakeLists.txt            ESP-IDF project; host tests when built with plain CMake (as TesserKIT does)
-  main/                     main.cpp, board.h, Kconfig, secrets.h (gitignored)
-  src/heliostat/            sun, geometry, Tracker, Heliostat, artnet (until TesserKIT has it)
+  CMakeLists.txt            the heliostat's code: an ESP-IDF component under idf.py, host library and tests under plain CMake
+  src/Heliostat.h
+  src/heliostat/            sun, geometry, Tracker, Heliostat and its tree, artnet (until TesserKIT has it)
+  firmware/                 the ESP-IDF project: CMakeLists.txt, sdkconfig.defaults (TesserKIT's partition table)
+    main/                   main.cpp, board.h, secrets.h (gitignored)
   web/elements/             sky.js; build.mjs → src/heliostat/elements.h
-  test/                     host tests, e2e_heliostat.py
-  sdkconfig.defaults, partitions → TesserKIT's
+  test/                     host tests (TesserMotion's check.h and plant), e2e_heliostat.py
   README.md, LICENSE (MIT), AGENTS.md (gitignored)
 ```
 
@@ -291,12 +293,12 @@ tiny-heliostat/
 | This repository's code | 20–40 KB |
 | `x-sky`, `x-keyframes` | < 6 KB |
 
-Everything should fit a 1.94 MB slot with room; measured in phase 0 and then per phase.
+**Measured** (2026-10-11, ESP-IDF 6.1-dev, classic ESP32, `-Os`): the phase 1 firmware (every TesserKIT service, two TesserMotion axes, the tracker and `/heliostat`) is 1.05 MB (0x10c3a0), 46 % of the 1.94 MB slot free.
 
 ## 11. Testing
 
 1. **Host tests** (CMake, ASan, UBSan):
-   - sun position against NOAA calculator values (several sites, solstices, equinoxes, near the horizon: ±0.02°), and against SolarPosition for parity (±0.2° above 10°);
+   - sun position against NREL's SPA (pvlib's `spa_python`, 0.0003°) at 14 times and places: ±0.02° in elevation above 5° (±0.15° nearer the horizon, where the refraction models differ), and ±0.02° of arc in azimuth;
    - reflection: helionext's zero-tilt cases, round trips, the degenerate case;
    - modes: ownership (`busy` on axis writes outside `manual`), `stop`, takeover, idle Art-Net, night parking, `waitingTime`, `noDirection` after a rename or removal, validators, sequence start switching the mode, both `apply` settings;
    - the persisted shape: a golden JSON of `api.persistedState()`, so a renamed setting shows as a diff;
@@ -310,8 +312,8 @@ TesserMotion's phases 2–4 (axes, sequencer, GPS) come before the heliostat's h
 
 | Phase | Content | Acceptance | Needs |
 |---|---|---|---|
-| 0 | Repository, ESP-IDF project with TesserKIT's services and an empty `/heliostat`, host CMake; USB flash of the heliostat with the new table (offsets and limits noted first) | The heliostat is provisioned from a phone and updated over OTA; footprint measured. | — |
-| 1 | `sun`, `geometry`, `Tracker`, `Heliostat` with their host tests | Host tests green; the tracker follows a simulated day on the plant model. | TesserMotion phase 1 (fakes, plant) |
+| 0 *(built)* | Repository, ESP-IDF project with TesserKIT's services, host CMake; USB flash of the heliostat with the new table (offsets and limits noted first) | The heliostat is provisioned from a phone and updated over OTA; footprint measured. Built and measured; not flashed yet. | — |
+| 1 *(done)* | `sun`, `geometry`, `Tracker`, `Heliostat` with their host tests | Host tests green: the tracker follows the sun and parks on the plant model. | TesserMotion phase 1 (fakes, plant) |
 | 2 | The axes and the tracker on hardware: manual, track, stop, night parking; `x-sky`; the Heliostat view (jog when TesserMotion has it) | A day of sun tracking onto a named target; timers switch modes. | TesserMotion phase 2, ownership (§13) |
 | 3 | Sequence with `apply`; GPS clock and site | A looping target sequence plays smoothly; the clock and site come from GPS. | TesserMotion phases 3, 4, sequencer callbacks (§13) |
 | 4 | Art-Net | A lighting console drives the mirror and takes over. | TesserKIT's Art-Net service, or ours |
