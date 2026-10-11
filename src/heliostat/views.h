@@ -15,8 +15,8 @@ namespace heliostat {
 void addViews(tesserui::Views& views);
 
 // The device's sections, in menu order, with their labels, icons and menu
-// groups: /heliostat, the axes (under "Axes"), and Motion's statistics in
-// /sys. Before Device::begin().
+// groups: /heliostat, then the axes and the control loop's statistics
+// (/motion) under "Axes". Before Device::begin().
 void mountTree(tesser::Api& api, Heliostat& helio, tessermotion::Axis& azimuth, tessermotion::Axis& elevation,
                tessermotion::Motion& motion);
 

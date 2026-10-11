@@ -88,7 +88,7 @@ One board: the deployed **classic ESP32 DevKitC, 4 MB flash, no PSRAM** (helione
 
 ```
  browser (TesserUI) ── HTTP / WebSocket ──▶ tesser::Api ◀── /sys: TesserKIT services
-                                              │  /heliostat (here)   /azimuth /elevation /sequence /gps /sys/motion (TesserMotion)
+                                              │  /heliostat (here)   /azimuth /elevation /sequence /gps /motion (TesserMotion)
  TesserKIT task (20 ms) ── api.poll, services, onTick:
      Heliostat::sync()  ── under the API lock: sun position (1 Hz), resolve source and target ──▶ Tracker::setAim() (Motion's lock)
                          ── pending GPS time ──▶ Time::external()
@@ -233,7 +233,7 @@ Persisted nodes are marked *(p)*. Access: reads are public; operating nodes (mod
 | `/azimuth`, `/elevation` | `Axis` | TesserMotion §9.1, without `autotune/` (§13) |
 | `/sequence` | `Sequencer`, tracks `azimuth`, `elevation` | TesserMotion §9.2 |
 | `/gps` | `NmeaGps` | TesserMotion §9.3 |
-| `/sys/motion` | `Motion` statistics, `stopAll` | TesserMotion §9.4 |
+| `/motion` | `Motion` statistics, `stopAll` ("Control loop", in the menu's Axes group) | TesserMotion §9.4 |
 | `/sys/...` | `System`, `Network`, `Time`, `Firmware`, `Backup`, `Timers`, `Auth` | TesserKIT §5 |
 | `/sys/artnet` | TesserKIT's Art-Net service, if accepted (§5.6) | — |
 

@@ -6,17 +6,15 @@
 namespace heliostat {
 
 void addViews(tesserui::Views& views) {
-    auto& page = views.page("heliostat", "Heliostat");
-    page.widget("x-sky", "/heliostat").hint("script", elements::kSkyPath);
-    page.row()
-        .node("/heliostat/mode")
-        .node("/heliostat/state")
-        .node("/heliostat/stop");
-    page.row().node("/heliostat/source").node("/heliostat/target");
-    page.row()
+    auto& page = views.page("overview", "Overview");
+    page.card("Sky").widget("x-sky", "/heliostat").hint("script", elements::kSkyPath);
+    auto& control = page.card("Control");
+    control.node("/heliostat/mode").node("/heliostat/state");
+    control.row().node("/heliostat/source").node("/heliostat/target");
+    control.row()
         .widget("readout", "/azimuth/position", "Azimuth")
-        .widget("readout", "/elevation/position", "Elevation")
-        .node("/heliostat/enabled");
+        .widget("readout", "/elevation/position", "Elevation");
+    control.row().node("/heliostat/enabled").node("/heliostat/stop");
 }
 
 void mountTree(tesser::Api& api, Heliostat& helio, tessermotion::Axis& azimuth, tessermotion::Axis& elevation,
@@ -24,7 +22,7 @@ void mountTree(tesser::Api& api, Heliostat& helio, tessermotion::Axis& azimuth, 
     api.mount("heliostat", helio).label("Heliostat").ui("icon", "sun");
     api.mount("azimuth", azimuth).label("Azimuth").ui("icon", "motor").ui("group", "Axes");
     api.mount("elevation", elevation).label("Elevation").ui("icon", "motor").ui("group", "Axes");
-    api.object("sys").mount("motion", motion).label("Motion");
+    api.mount("motion", motion).label("Control loop").ui("icon", "chart").ui("group", "Axes");
 }
 
 }  // namespace heliostat
