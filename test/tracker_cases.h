@@ -198,6 +198,18 @@ TEST(tracker_bridge_follows_the_axes) {
     azimuth.enable(false);
     helio.sync(1020, 0);
     CHECK(!gpio.level[18]);
+    // A motor driven by hand on a disabled axis wakes it too.
+    tessermotion::Motion motion;
+    motion.add(azimuth);
+    motion.begin();
+    CHECK(azimuth.setManualOutput(0.3f));
+    motion.step(2000000);
+    helio.sync(1040, 0);
+    CHECK(gpio.level[18]);
+    CHECK(azimuth.setManualOutput(0));
+    motion.step(2020000);
+    helio.sync(1060, 0);
+    CHECK(!gpio.level[18]);
     helio.enable(true);
     CHECK(gpio.level[18] && azimuth.enabled() && elevation.enabled());
     helio.enable(false);

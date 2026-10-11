@@ -130,7 +130,7 @@ TesserMotion's concurrency rules apply (its §3.5): the API lock, then Motion's 
 
 TesserMotion's `Axis` (its §4.3): PID with integral clamp and derivative on measurement, deadband, slew, soft limits, sensor fault handling, no jump at start. Its internals are in the raw sensor frame, so changing `offset` or `invert` never moves the motor, and limits are given in the raw frame. The heliostat sets factory defaults before `Motion::begin()`: `maxSpeed` 10 °/s, and limits off until measured on the unit (§3). Elevation targets are 0–90°.
 
-- **The bridge's standby** follows the axes: it is on while either axis is enabled, whoever enabled it (`/heliostat/enabled`, or an axis's own `enabled`), and off when both are disabled. `sync()` checks it every tick.
+- **The bridge's standby** follows the axes: it is on while either axis is enabled, whoever enabled it (`/heliostat/enabled`, or an axis's own `enabled`), or drives its motor by hand (`motor/output` on a disabled axis), and off otherwise. `sync()` checks it every tick.
 - **Enabling:** TesserMotion axes boot disabled (`enabled` isn't persisted there), and refuse `target` writes (`not_allowed`) while disabled or starting. The heliostat's persisted `/heliostat/enabled` enables both axes and the TB6612's standby at start, and disables them when turned off. It defaults to false: a fresh heliostat (or one after a factory reset) energizes nothing until someone has checked its offsets, motor directions and limits and turned it on. Once on, it stays on across restarts, and the heliostat resumes its mode without a click, holding position until each axis has its first reading.
 
 ### 5.2 Modes
@@ -308,7 +308,8 @@ tiny-heliostat/
    - the Art-Net receiver while it lives here (ArtPoll, ArtDmx, wrong universe, 8- and 16-bit channels).
 2. **Closed loop on the host:** the tracker and both axes against TesserMotion's simulated plant (`tessermotion_testing`), with `/sys` on TesserKIT's fake platform (`tesserkit_fake`), over a simulated day: the normal followed within tolerance, `maxSpeed` respected, parking at sunset.
 3. **Simulator** (`build/heliostat_sim`): the firmware's tree on TesserKIT's fake platform (`tesserkit_fake`, so `/sys` is there too), both axes on TesserMotion's plants, the clock from the real one (`--at <epoch>`, `--speed <x>` to watch a day). `node ~/Dev/TesserUI/web/scripts/device.mjs --exe build/heliostat_sim --elements web/elements --port 8092` serves it with the real interface and the custom elements.
-4. **On the heliostat:** `test/e2e_heliostat.py http://<ip>` over HTTP and WebSocket: the tree, modes and ownership, manual moves within tolerance, a sequence, an Art-Net packet sent from the script, persistence across a restart, tracking checked against the host's own sun computation. Motors move: limits on and `maxSpeed` low, with Leo's go-ahead (TesserMotion's AGENTS.md).
+4. **Commissioning** (`test/commission.py <url>`, standard library only): the first motor tests, one axis at a time, with someone watching. Encoder readings at rest; the motor's direction from a 0.4 s manual pulse on the disabled axis (positive output must increase the raw angle, else `motor/config/invert` is flipped); hold where it is; a 5° step and back at 5 °/s. Every motion asks first; a runaway (the position straying from its path), a sensor fault or Ctrl-C disables both axes.
+5. **On the heliostat:** `test/e2e_heliostat.py http://<ip>` over HTTP and WebSocket: the tree, modes and ownership, manual moves within tolerance, a sequence, an Art-Net packet sent from the script, persistence across a restart, tracking checked against the host's own sun computation. Motors move: limits on and `maxSpeed` low, with Leo's go-ahead (TesserMotion's AGENTS.md).
 
 ## 12. Roadmap
 

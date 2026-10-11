@@ -20,10 +20,11 @@ void Heliostat::apply() {
 }
 
 // The bridge is out of standby while either axis is enabled, whoever enabled
-// it: /heliostat/enabled, or an axis's own `enabled` in its tree.
+// it (/heliostat/enabled, or an axis's own `enabled` in its tree), or drives
+// its motor by hand (`motor/output` on a disabled axis).
 void Heliostat::standby() {
     if (!standby_ || !started_) return;
-    bool on = azimuth_.enabled() || elevation_.enabled();
+    bool on = azimuth_.enabled() || elevation_.enabled() || azimuth_.output() != 0 || elevation_.output() != 0;
     if (on == bridgeOn_) return;
     bridgeOn_ = on;
     standby_->enable(on);
