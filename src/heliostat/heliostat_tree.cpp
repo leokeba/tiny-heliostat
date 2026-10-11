@@ -73,12 +73,13 @@ void describe(Object& o, Heliostat& h) {
         .ui("options", "directions");
 
     auto& sun = o.object("sun").label("Sun");
-    sun.value("azimuth", [&h] { return h.sun().azimuth; }).unit("°").watch();
-    sun.value("elevation", [&h] { return h.sun().elevation; }).unit("°").watch();
+    sun.value("azimuth", [&h] { return h.sun().azimuth; }).unit("°").ui("precision", 1).watch();
+    sun.value("elevation", [&h] { return h.sun().elevation; }).unit("°").ui("precision", 1).watch();
 
-    auto& normal = o.object("normal").label("Mirror normal").doc("What tracking commands");
-    normal.value("azimuth", [&h] { return h.tracker().normal().azimuth; }).unit("°").watch();
-    normal.value("elevation", [&h] { return h.tracker().normal().elevation; }).unit("°").watch();
+    auto& normal =
+        o.object("normal").label("Mirror normal").doc("What the mode commands").ui("visibleWhen", "mode!=manual");
+    normal.value("azimuth", [&h] { return h.tracker().normal().azimuth; }).unit("°").ui("precision", 1).watch();
+    normal.value("elevation", [&h] { return h.tracker().normal().elevation; }).unit("°").ui("precision", 1).watch();
 
     auto& site = o.object("site").label("Site").persist().writeAccess(Access::Admin).ui("collapsed");
     site.value("latitude", h.latitude).range(-90, 90).step(0.0001).unit("°");
