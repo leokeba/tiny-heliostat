@@ -8,9 +8,11 @@
 //   then http://localhost:8092/
 //
 // Options: --at <epoch s> starts the clock there (default: now); --speed <x>
-// runs the clock x times faster, to watch a day go by; --public makes
-// clients Public instead of Admin.
+// runs the clock x times faster, to watch a day go by; --dmx plays a console
+// on Art-Net universe 0 (a slow sweep, 30 frames/s), with /sys/artnet on;
+// --public makes clients Public instead of Admin.
 #include <errno.h>
+#include <math.h>
 #include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -60,10 +62,12 @@ struct Client {
 
 int main(int argc, char** argv) {
     bool admin = true;
+    bool dmx = false;
     double speed = 1;
     int64_t at = 0;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--public") == 0) admin = false;
+        if (strcmp(argv[i], "--dmx") == 0) dmx = true;
         if (strcmp(argv[i], "--speed") == 0 && i + 1 < argc) speed = atof(argv[++i]);
         if (strcmp(argv[i], "--at") == 0 && i + 1 < argc) at = atoll(argv[++i]) * 1000;
     }
@@ -92,6 +96,11 @@ int main(int argc, char** argv) {
     tesserkit::Backup backup(dev);
     tesserkit::Timers timers(dev);
     tesserkit::Auth auth(dev);
+    tesserkit::ArtNet artnet(dev);
+    artnet.enable(dmx)
+        .universe(0)
+        .map({"/heliostat/artnet/azimuth", 1, 2, 0, 360})
+        .map({"/heliostat/artnet/elevation", 3, 4, 0, 90});
     net.defaultNetwork("Workshop", "workshop-pw");
     timekeeper.defaultTz("CET-1CEST,M3.5.0,M10.5.0/3");
 
@@ -150,6 +159,7 @@ int main(int argc, char** argv) {
     fprintf(stderr, "heliostat_sim: serving on stdin/stdout\n");
 
     int64_t last = realMs();
+    int64_t lastFrame = 0;
     char buf[4096];
     for (;;) {
         struct pollfd pfd = {0, POLLIN, 0};
@@ -175,6 +185,18 @@ int main(int argc, char** argv) {
         elPlant.advance(dt);
         fake.core.now = static_cast<uint64_t>(now - realStart) + 1000;
         fake.clock.epoch = epochNow();
+        if (dmx && now - lastFrame >= 33) {
+            // A console sweeping azimuth 150–250° and elevation 20–50° in a minute.
+            lastFrame = now;
+            double t = static_cast<double>(now - realStart) / 60000.0 * 2 * 3.14159265358979;
+            auto channels = [](double v, double lo, double hi) {
+                auto x = static_cast<uint16_t>((v - lo) / (hi - lo) * 65535.0);
+                return std::string{static_cast<char>(x >> 8), static_cast<char>(x & 0xFF)};
+            };
+            std::string data = channels(200 + 50 * sin(t), 0, 360) + channels(35 + 15 * cos(t), 0, 90);
+            std::string p("Art-Net\0\x00\x50\x00\x0e\x01\x00\x00\x00\x00\x04", 18);
+            fake.udp.deliver(6454, p + data);
+        }
         fake.core.runTasks();
         dev.loop();  // TesserKIT's services, then the heliostat's sync
         motion.step(static_cast<uint64_t>(now - realStart) * 1000 + 1000000);

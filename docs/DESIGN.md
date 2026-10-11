@@ -184,6 +184,7 @@ The heliostat's side is an input object, `/heliostat/artnet`, with writable `azi
 - In `artnet` mode the tracker uses them: as axis angles (`apply` `axes`, helionext's behaviour) or as a target direction to reflect onto (`apply` `target`).
 - `takeover` (default true): a write while not in `artnet` mode switches to `artnet`. Leaving is explicit (choosing another mode), so a console that stops sending doesn't hand control back by surprise.
 - No write for 5 s: state `artnetIdle`, the axes hold.
+- On the heliostat, `/sys/artnet` maps universe 0's channels 1/2 onto `/heliostat/artnet/azimuth` (0–360°) and 3/4 onto `/elevation` (0–90°), helionext's defaults, and is **off by default** (`artnet.enable(false)`, as helionext's was): a console on the network can't take the mirror over until someone turns Art-Net on.
 
 **The receiver** (UDP 6454, ArtPoll reply, ArtDmx on one universe, 8- or 16-bit channels scaled to a range, a gate channel with a threshold) is not heliostat-specific. It is proposed to TesserKIT as a generic service, `/sys/artnet`, mapping channels to any tree paths as Timers maps times to paths (§13). TesserKIT is building it (Leo's go, 2026-10-11), so this repository has no receiver: the device maps `/sys/artnet` channels onto `/heliostat/artnet/azimuth` and `/elevation`.
 
@@ -220,7 +221,7 @@ Persisted nodes are marked *(p)*. Access: reads are public; operating nodes (mod
   artnet/               azimuth, elevation (writable, °, watched); apply *(p)* enum axes, target; takeover *(p)* boolean
 ```
 
-- `mode` has `manual` and `track` so far; `sequence` and `artnet` are added with their phases (adding enum values keeps stored settings valid).
+- `mode` has `manual`, `track` and `artnet` so far; `sequence` comes with its phase (adding enum values keeps stored settings valid). A mode changed by code (`stop`, Art-Net's takeover) is announced to subscribers.
 - `source` and `target` are checked against `directions` (and `Sun` for the source) by a validator. A direction added in a patch can't be named in the same patch: the validator sees the list as it was. `directions` comes before them in the tree, so a stored state loads the list first. A direction removed later isn't refused retroactively: the state becomes `noDirection`.
 - Adding, renaming and removing directions are list writes (TesserAPI §4.4). helionext's `add`, `remove`, `rename`, `set` actions go away.
 
@@ -307,7 +308,7 @@ tiny-heliostat/
    - the persisted shape: a golden JSON of `api.persistedState()`, so a renamed setting shows as a diff;
    - the Art-Net receiver while it lives here (ArtPoll, ArtDmx, wrong universe, 8- and 16-bit channels).
 2. **Closed loop on the host:** the tracker and both axes against TesserMotion's simulated plant (`tessermotion_testing`), with `/sys` on TesserKIT's fake platform (`tesserkit_fake`), over a simulated day: the normal followed within tolerance, `maxSpeed` respected, parking at sunset.
-3. **Simulator** (`build/heliostat_sim`): the firmware's tree on TesserKIT's fake platform (`tesserkit_fake`, so `/sys` is there too), both axes on TesserMotion's plants, the clock from the real one (`--at <epoch>`, `--speed <x>` to watch a day). `node ~/Dev/TesserUI/web/scripts/device.mjs --exe build/heliostat_sim --elements web/elements --port 8092` serves it with the real interface and the custom elements.
+3. **Simulator** (`build/heliostat_sim`): the firmware's tree on TesserKIT's fake platform (`tesserkit_fake`, so `/sys` is there too), both axes on TesserMotion's plants, the clock from the real one (`--at <epoch>`, `--speed <x>` to watch a day), and `--dmx` for a console sweeping the mirror over Art-Net. `node ~/Dev/TesserUI/web/scripts/device.mjs --exe build/heliostat_sim --elements web/elements --port 8092` serves it with the real interface and the custom elements.
 4. **Commissioning** (`test/commission.py <url>`, standard library only): the first motor tests, one axis at a time, with someone watching. Encoder readings at rest; the motor's direction from a 0.4 s manual pulse on the disabled axis (positive output must increase the raw angle, else `motor/config/invert` is flipped); hold where it is; a 5° step and back at 5 °/s. Every motion asks first; a runaway (the position straying from its path), a sensor fault or Ctrl-C disables both axes.
 5. **On the heliostat:** `test/e2e_heliostat.py http://<ip>` over HTTP and WebSocket: the tree, modes and ownership, manual moves within tolerance, a sequence, an Art-Net packet sent from the script, persistence across a restart, tracking checked against the host's own sun computation. Motors move: limits on and `maxSpeed` low, with Leo's go-ahead (TesserMotion's AGENTS.md).
 
@@ -321,7 +322,7 @@ TesserMotion's phases 2–4 (axes, sequencer, GPS) come before the heliostat's h
 | 1 *(done)* | `sun`, `geometry`, `Tracker`, `Heliostat` with their host tests | Host tests green: the tracker follows the sun and parks on the plant model. | TesserMotion phase 1 (fakes, plant) |
 | 2 *(in progress)* | The axes and the tracker on hardware: manual, track, stop, night parking; `x-sky`; the Heliostat view (jog when TesserMotion has it) | A day of sun tracking onto a named target; timers switch modes. Done: the view, `x-sky`, the selects and the simulator; the heliostat flashed (2026-10-11, motors off). | TesserMotion phase 2, ownership (§13) |
 | 3 | Sequence with `apply`; GPS clock and site | A looping target sequence plays smoothly; the clock and site come from GPS. | TesserMotion phases 3, 4, sequencer callbacks (§13) |
-| 4 | Art-Net | A lighting console drives the mirror and takes over. | TesserKIT's Art-Net service, or ours |
+| 4 *(built)* | Art-Net | A lighting console drives the mirror and takes over. Host-tested, and end to end in the simulator (`--dmx`); not yet with a real console. | TesserKIT's Art-Net service (8a30a08) |
 | 5 | README, `e2e_heliostat.py` complete, TesserKIT DESIGN §10.1 updated to what was built | | |
 
 ## 13. Requests to other layers

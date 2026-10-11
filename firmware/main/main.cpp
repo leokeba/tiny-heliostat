@@ -34,6 +34,7 @@ tesserkit::Firmware firmware(dev);
 tesserkit::Backup backup(dev);
 tesserkit::Timers timers(dev);
 tesserkit::Auth auth(dev);  // open until an admin account exists
+tesserkit::ArtNet artnet(dev);
 
 Tb6612Standby bridge(board::kStandby);
 Tb6612Channel azimuthMotor(bridge, {.pwm = board::kAzimuthPwm, .in1 = board::kAzimuthIn1, .in2 = board::kAzimuthIn2});
@@ -66,6 +67,12 @@ extern "C" void app_main() {
     net.txPower(WIFI_TX_POWER);
 #endif
     timekeeper.defaultTz("CET-1CEST,M3.5.0,M10.5.0/3");  // Paris
+    // Art-Net onto the heliostat's input, helionext's channels: off until
+    // turned on, so a console on the network can't take the mirror over.
+    artnet.enable(false)
+        .universe(0)
+        .map({"/heliostat/artnet/azimuth", 1, 2, 0, 360})
+        .map({"/heliostat/artnet/elevation", 3, 4, 0, 90});
 
     // Factory defaults, until the stored settings say otherwise.
     azimuth.tuning.maxSpeed = 10;  // °/s

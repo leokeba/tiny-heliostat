@@ -47,6 +47,18 @@ public:
     float minSunElevation = 0;
     float parkAzimuth = 180;
     float parkElevation = 45;
+    Apply artnetApply = Apply::Axes;
+    bool artnetTakeover = true;  // a value while in another mode selects Art-Net
+
+    // Art-Net mode's input, /heliostat/artnet/azimuth and elevation, written by
+    // TesserKIT's /sys/artnet mappings. Under the API lock.
+    void artnet(int coordinate, float degrees);
+    float artnetValue(int coordinate) const { return coordinate ? artnetElevation_ : artnetAzimuth_; }
+    // No Art-Net value for this long: hold.
+    static constexpr uint32_t kArtnetIdleMs = 5000;
+
+    // The tree's mode node, so mode changes made by code are announced.
+    void modeNode(tesser::Node* n) { modeNode_ = n; }
 
     // After Motion::start(): applies `enabled` to the axes and the bridge.
     void start();
@@ -83,6 +95,12 @@ private:
     bool sunValid_ = false;
     uint32_t sunAtMs_ = 0;
     double sunLatitude_ = 0, sunLongitude_ = 0;
+    void setMode(Mode m);
+    tesser::Node* modeNode_ = nullptr;
+    float artnetAzimuth_ = 0, artnetElevation_ = 0;
+    uint32_t artnetWrites_ = 0, artnetSeen_ = 0;
+    uint32_t artnetAtMs_ = 0;
+    bool artnetEver_ = false;
 };
 
 // The /heliostat tree, found by argument-dependent lookup:

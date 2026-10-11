@@ -21,14 +21,15 @@ constexpr size_t kMaxDirections = 16;
 void describe(Object& o, Heliostat& h) {
     o.writeAccess(Access::User);
 
-    o.value("mode", h.mode, {"manual", "track"})
-        .persist()
-        .doc("Who moves the mirror: the axes' own targets, or the reflection of the source onto the target")
-        .ui("widget", "segmented");
+    h.modeNode(&o.value("mode", h.mode, {"manual", "track", "artnet"})
+                    .persist()
+                    .doc("Who moves the mirror: the axes' own targets, the reflection of the source onto the "
+                         "target, or Art-Net")
+                    .ui("widget", "segmented"));
     o.value(
          "state", [&h] { return h.tracker().state(); },
          {"holding", "tracking", "parked", "waitingTime", "noLocation", "noDirection", "degenerate", "axisFault",
-          "disabled"})
+          "disabled", "artnet", "artnetIdle"})
         .watch();
     o.value("enabled", [&h] { return h.enabled(); }, [&h](bool on) { h.enable(on); })
         .persist()
@@ -82,6 +83,23 @@ void describe(Object& o, Heliostat& h) {
     auto& site = o.object("site").label("Site").persist().writeAccess(Access::Admin).ui("collapsed");
     site.value("latitude", h.latitude).range(-90, 90).step(0.0001).unit("°");
     site.value("longitude", h.longitude).range(-180, 180).step(0.0001).unit("°").doc("East positive");
+
+    auto& artnet = o.object("artnet")
+                       .label("Art-Net")
+                       .doc("Art-Net mode's input: map /sys/artnet's channels here")
+                       .ui("collapsed");
+    artnet.value("azimuth", [&h] { return h.artnetValue(0); }, [&h](float v) { h.artnet(0, v); })
+        .range(0, 360)
+        .unit("°")
+        .watch();
+    artnet.value("elevation", [&h] { return h.artnetValue(1); }, [&h](float v) { h.artnet(1, v); })
+        .range(-90, 90)
+        .unit("°")
+        .watch();
+    artnet.value("apply", h.artnetApply, {"axes", "target"})
+        .persist()
+        .doc("axes: the values are the axes' angles; target: a direction the source is reflected onto");
+    artnet.value("takeover", h.artnetTakeover).persist().doc("A value while in another mode selects Art-Net mode");
 
     auto& park = o.object("park")
                      .label("Night park")

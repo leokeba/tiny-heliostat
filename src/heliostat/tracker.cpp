@@ -23,18 +23,43 @@ Direction Tracker::normal() {
 }
 
 // Every mode but manual owns the axes: the tree refuses to move them
-// (TesserMotion's claim).
+// (TesserMotion's claim), naming the mode.
 void Tracker::own(Mode mode) {
-    bool own = mode != Mode::Manual;
-    if (own == owned_) return;
-    owned_ = own;
-    if (own) {
-        azimuth_.claim("tracking");
-        elevation_.claim("tracking");
-    } else {
+    if (mode == owner_) return;
+    owner_ = mode;
+    if (mode == Mode::Manual) {
         azimuth_.release();
         elevation_.release();
+        return;
     }
+    const char* name = mode == Mode::Artnet ? "art-net" : "tracking";
+    azimuth_.claim(name);
+    elevation_.claim(name);
+}
+
+void Tracker::go(Direction d) {
+    normal_ = d;
+    azimuth_.setTarget(d.azimuth);
+    elevation_.setTarget(d.elevation);
+}
+
+// The source reflected onto `target`, or the park at night. Returns the
+// state; the axes hold their last targets unless it is Tracking or Parked.
+State Tracker::reflectOnto(Direction target) {
+    switch (aim_.sourceStatus) {
+        case AimStatus::WaitingTime: return State::WaitingTime;
+        case AimStatus::NoLocation: return State::NoLocation;
+        case AimStatus::NoDirection: return State::NoDirection;
+        case AimStatus::Ok: break;
+    }
+    if (aim_.sourceIsSun && aim_.source.elevation < aim_.minSunElevation) {
+        go(aim_.park);
+        return State::Parked;
+    }
+    Direction n;
+    if (!reflect(aim_.source, target, n)) return State::Degenerate;
+    go(n);
+    return State::Tracking;
 }
 
 void Tracker::update(uint64_t nowUs) {
@@ -50,33 +75,31 @@ void Tracker::update(uint64_t nowUs) {
     } else {
         st = State::Holding;
     }
-
-    if (aim_.mode == Mode::Track && st != State::Disabled) {
-        Direction goal;
-        State tracked = State::Tracking;
-        switch (aim_.status) {
-            case AimStatus::WaitingTime: tracked = State::WaitingTime; break;
-            case AimStatus::NoLocation: tracked = State::NoLocation; break;
-            case AimStatus::NoDirection: tracked = State::NoDirection; break;
-            case AimStatus::Ok:
-                if (aim_.sourceIsSun && aim_.source.elevation < aim_.minSunElevation) {
-                    goal = aim_.park;
-                    tracked = State::Parked;
-                } else if (!reflect(aim_.source, aim_.target, goal)) {
-                    tracked = State::Degenerate;
-                }
-                break;
-        }
-        // Otherwise the axes hold their last targets.
-        if (tracked == State::Tracking || tracked == State::Parked) {
-            normal_ = goal;
-            azimuth_.setTarget(goal.azimuth);
-            elevation_.setTarget(goal.elevation);
-        }
-        // A fault says more than what the mode would do.
-        if (st != State::AxisFault) st = tracked;
+    if (st == State::Disabled) {
+        state_ = st;
+        return;
     }
-    state_ = st;
+
+    State moded = State::Holding;
+    switch (aim_.mode) {
+        case Mode::Manual: break;
+        case Mode::Track:
+            moded = aim_.targetStatus != AimStatus::Ok ? State::NoDirection : reflectOnto(aim_.target);
+            break;
+        case Mode::Artnet:
+            if (aim_.externalIdle) {
+                moded = State::ArtnetIdle;
+            } else if (aim_.apply == Apply::Axes) {
+                go(aim_.external);
+                moded = State::Artnet;
+            } else {
+                moded = reflectOnto(aim_.external);
+                if (moded == State::Tracking) moded = State::Artnet;
+            }
+            break;
+    }
+    // A fault says more than what the mode would do.
+    state_ = st == State::AxisFault ? st : moded;
 }
 
 const char* toString(State s) {
@@ -90,6 +113,8 @@ const char* toString(State s) {
         case State::Degenerate: return "degenerate";
         case State::AxisFault: return "axisFault";
         case State::Disabled: return "disabled";
+        case State::Artnet: return "artnet";
+        case State::ArtnetIdle: return "artnetIdle";
     }
     return "?";
 }

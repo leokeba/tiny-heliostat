@@ -30,8 +30,20 @@ void Heliostat::standby() {
     standby_->enable(on);
 }
 
+void Heliostat::setMode(Mode m) {
+    if (mode == m) return;
+    mode = m;
+    if (modeNode_) modeNode_->changed();
+}
+
+void Heliostat::artnet(int coordinate, float degrees) {
+    (coordinate ? artnetElevation_ : artnetAzimuth_) = degrees;
+    artnetWrites_++;
+    if (artnetTakeover) setMode(Mode::Artnet);
+}
+
 void Heliostat::stop() {
-    mode = Mode::Manual;
+    setMode(Mode::Manual);
     Aim aim;
     tracker_.setAim(aim);  // releases the axes on the next tick
     azimuth_.hold();
@@ -58,30 +70,39 @@ void Heliostat::sync(uint32_t nowMs, int64_t epochMs) {
         sunLongitude_ = longitude;
     }
 
+    if (artnetWrites_ != artnetSeen_) {
+        artnetSeen_ = artnetWrites_;
+        artnetAtMs_ = nowMs;
+        artnetEver_ = true;
+    }
+
     Aim aim;
     aim.mode = mode;
     aim.minSunElevation = minSunElevation;
     aim.park = {parkAzimuth, parkElevation};
-    const NamedDirection* t = target == kSun ? nullptr : find(target);
     if (source == kSun) {
         aim.sourceIsSun = true;
         if (!sunValid_) {
-            aim.status = AimStatus::WaitingTime;
+            aim.sourceStatus = AimStatus::WaitingTime;
         } else if (latitude == 0 && longitude == 0) {
-            aim.status = AimStatus::NoLocation;
+            aim.sourceStatus = AimStatus::NoLocation;
         } else {
             aim.source = {static_cast<float>(sun_.azimuth), static_cast<float>(sun_.elevation)};
         }
     } else if (const NamedDirection* s = find(source)) {
         aim.source = {s->azimuth, s->elevation};
     } else {
-        aim.status = AimStatus::NoDirection;
+        aim.sourceStatus = AimStatus::NoDirection;
     }
-    if (!t) {
-        aim.status = AimStatus::NoDirection;
-    } else {
+    const NamedDirection* t = target == kSun ? nullptr : find(target);
+    if (t) {
         aim.target = {t->azimuth, t->elevation};
+    } else {
+        aim.targetStatus = AimStatus::NoDirection;
     }
+    aim.external = {artnetAzimuth_, artnetElevation_};
+    aim.apply = artnetApply;
+    aim.externalIdle = !artnetEver_ || static_cast<uint32_t>(nowMs - artnetAtMs_) > kArtnetIdleMs;
     tracker_.setAim(aim);
 }
 

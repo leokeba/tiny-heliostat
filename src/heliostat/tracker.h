@@ -16,7 +16,11 @@
 
 namespace heliostat {
 
-enum class Mode : uint8_t { Manual, Track };
+enum class Mode : uint8_t { Manual, Track, Artnet };
+
+// What external values (Art-Net, later the sequence) mean: the axes' angles,
+// or a target direction to reflect the source onto.
+enum class Apply : uint8_t { Axes, Target };
 
 // What the selected mode is doing (DESIGN section 5.2).
 enum class State : uint8_t {
@@ -29,6 +33,8 @@ enum class State : uint8_t {
     Degenerate,   // the source is opposite the target
     AxisFault,    // an axis has no reading
     Disabled,     // an axis is disabled
+    Artnet,       // following Art-Net
+    ArtnetIdle,   // Art-Net mode, but no value for 5 s: holding
 };
 
 // Why Heliostat::sync() couldn't resolve an aim, or Ok.
@@ -36,12 +42,19 @@ enum class AimStatus : uint8_t { Ok, WaitingTime, NoLocation, NoDirection };
 
 struct Aim {
     Mode mode = Mode::Manual;
-    AimStatus status = AimStatus::Ok;
+    // Whether `source` and `target` could be resolved.
+    AimStatus sourceStatus = AimStatus::Ok;
+    AimStatus targetStatus = AimStatus::Ok;
     bool sourceIsSun = false;
     Direction source;
     Direction target;
     float minSunElevation = 0;
     Direction park{180, 45};
+    // Art-Net mode: the latest values, what they mean, and whether they
+    // stopped coming.
+    Direction external;
+    Apply apply = Apply::Axes;
+    bool externalIdle = true;
 };
 
 class Tracker : public tessermotion::Part {
@@ -59,12 +72,14 @@ public:
 
 private:
     void own(Mode mode);
+    State reflectOnto(Direction target);
+    void go(Direction d);
 
     tessermotion::Axis& azimuth_;
     tessermotion::Axis& elevation_;
     // Under Motion's lock.
     Aim aim_;
-    bool owned_ = false;
+    Mode owner_ = Mode::Manual;  // whom the axes are claimed for
     State state_ = State::Holding;
     Direction normal_;
 };
