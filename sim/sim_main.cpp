@@ -124,10 +124,7 @@ int main(int argc, char** argv) {
     motion.add(elevation);
 
     auto& api = dev.api();
-    api.mount("heliostat", helio).label("Heliostat");
-    api.mount("azimuth", azimuth).label("Azimuth");
-    api.mount("elevation", elevation).label("Elevation");
-    api.object("sys").mount("motion", motion).label("Motion");
+    heliostat::mountTree(api, helio, azimuth, elevation, motion);
     tesserui::Views views(api);
     heliostat::addViews(views);
     dev.onTick([&](uint32_t nowMs) {
