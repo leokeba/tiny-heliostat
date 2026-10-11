@@ -14,6 +14,13 @@ void addViews(tesserui::Views& views) {
     control.row()
         .widget("readout", "/azimuth/position", "Azimuth")
         .widget("readout", "/elevation/position", "Elevation");
+    // Hold to move (manual mode, axes enabled): TesserMotion's jog.
+    control.row()
+        .widget("hold", "/azimuth/jogMinus", "Azimuth −")
+        .widget("hold", "/azimuth/jogPlus", "Azimuth +");
+    control.row()
+        .widget("hold", "/elevation/jogMinus", "Elevation −")
+        .widget("hold", "/elevation/jogPlus", "Elevation +");
     control.row().node("/heliostat/enabled").node("/heliostat/stop");
 }
 

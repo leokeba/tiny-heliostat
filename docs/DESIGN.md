@@ -249,7 +249,7 @@ TesserUI draws the root as cards: Heliostat, Azimuth, Elevation, Sequence, GPS, 
 
 | View | Content |
 |---|---|
-| `Heliostat` (first) | `x-sky` over `/heliostat`; `mode`, `state`, `stop`; `source`, `target` (selects of the directions); both axes' `position` and `enabled` (jog when TesserMotion has it) |
+| `Heliostat` (first) | `x-sky` over `/heliostat`; `mode`, `state`, `stop`; `source`, `target` (selects of the directions); both axes' `position`, hold-to-jog buttons for each axis (TesserMotion's jog, re-sent by TesserUI's `hold` while pressed), `enabled` and `stop` |
 | `Sequence` | `x-keyframes` over `/sequence`, with `/heliostat/sequence/apply` and `loop` |
 
 ### 7.2 Custom elements
