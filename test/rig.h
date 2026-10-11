@@ -16,6 +16,7 @@
 #include "TesserAPI.h"
 #include "TesserMotion.h"
 #include "check.h"
+#include "fake_hw.h"
 #include "plant.h"
 #include "tessermotion/angle.h"
 
@@ -52,6 +53,7 @@ struct Rig {
         api.mount("azimuth", azimuth);
         api.mount("elevation", elevation);
         motion.begin();
+        helio.enable(true);
         helio.start();
     }
 

@@ -3,8 +3,9 @@
 // this repository's tracker and /heliostat tree.
 //
 // Flash it, join the "heliostat-xxxx" network from a phone, and the
-// interface opens. The heliostat boots in manual mode; the axes hold where
-// they are once they have a reading.
+// interface opens. A fresh heliostat boots in manual mode with its motors
+// off: check the axes' offsets, motor directions and limits, then turn
+// /heliostat/enabled on.
 //
 // For development, a gitignored main/secrets.h may define WIFI_SSID and
 // WIFI_PASSWORD, and WIFI_TX_POWER (dBm) for boards with a weak supply.
@@ -14,6 +15,8 @@
 #include "TesserKIT.h"
 #include "TesserMotion.h"
 #include "board.h"
+#include "heliostat/elements.h"
+#include "heliostat/views.h"
 
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -78,6 +81,10 @@ extern "C" void app_main() {
     api.mount("azimuth", azimuth).label("Azimuth");
     api.mount("elevation", elevation).label("Elevation");
     api.object("sys").mount("motion", motion).label("Motion");
+    static tesserui::Views views(api);
+    heliostat::addViews(views);
+    namespace el = heliostat::elements;
+    dev.web().asset(el::kSkyPath, el::kSky, sizeof(el::kSky), "text/javascript", true);
 
     // Nothing moves while new firmware is written.
     dev.onState([](tesserkit::State s) {

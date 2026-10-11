@@ -4,6 +4,7 @@ namespace heliostat {
 
 void Heliostat::start() {
     started_ = true;
+    bridgeOn_ = true;  // Tb6612Standby::begin() left it on
     apply();
 }
 
@@ -12,13 +13,20 @@ void Heliostat::enable(bool on) {
     if (started_) apply();
 }
 
-// The bridge's standby before the axes when enabling, after when disabling,
-// so a motor never sees an output the bridge would hold half on.
 void Heliostat::apply() {
-    if (enabled_ && standby_) standby_->enable(true);
     azimuth_.enable(enabled_);
     elevation_.enable(enabled_);
-    if (!enabled_ && standby_) standby_->enable(false);
+    standby();
+}
+
+// The bridge is out of standby while either axis is enabled, whoever enabled
+// it: /heliostat/enabled, or an axis's own `enabled` in its tree.
+void Heliostat::standby() {
+    if (!standby_ || !started_) return;
+    bool on = azimuth_.enabled() || elevation_.enabled();
+    if (on == bridgeOn_) return;
+    bridgeOn_ = on;
+    standby_->enable(on);
 }
 
 void Heliostat::stop() {
@@ -36,6 +44,7 @@ const NamedDirection* Heliostat::find(const std::string& name) const {
 }
 
 void Heliostat::sync(uint32_t nowMs, int64_t epochMs) {
+    standby();
     bool timeValid = epochMs >= kValidAfterMs;
     bool moved = latitude != sunLatitude_ || longitude != sunLongitude_;
     if (!timeValid) {

@@ -130,7 +130,8 @@ TesserMotion's concurrency rules apply (its §3.5): the API lock, then Motion's 
 
 TesserMotion's `Axis` (its §4.3): PID with integral clamp and derivative on measurement, deadband, slew, soft limits, sensor fault handling, no jump at start. Its internals are in the raw sensor frame, so changing `offset` or `invert` never moves the motor, and limits are given in the raw frame. The heliostat sets factory defaults before `Motion::begin()`: `maxSpeed` 10 °/s, and limits off until measured on the unit (§3). Elevation targets are 0–90°.
 
-- **Enabling:** TesserMotion axes boot disabled (`enabled` isn't persisted there), and refuse `target` writes (`not_allowed`) while disabled or starting. The heliostat's persisted `/heliostat/enabled` (default true) enables both axes and the TB6612's standby at start, and disables them when turned off. A heliostat therefore resumes its mode after a restart without a click, holding position until each axis has its first reading.
+- **The bridge's standby** follows the axes: it is on while either axis is enabled, whoever enabled it (`/heliostat/enabled`, or an axis's own `enabled`), and off when both are disabled. `sync()` checks it every tick.
+- **Enabling:** TesserMotion axes boot disabled (`enabled` isn't persisted there), and refuse `target` writes (`not_allowed`) while disabled or starting. The heliostat's persisted `/heliostat/enabled` enables both axes and the TB6612's standby at start, and disables them when turned off. It defaults to false: a fresh heliostat (or one after a factory reset) energizes nothing until someone has checked its offsets, motor directions and limits and turned it on. Once on, it stays on across restarts, and the heliostat resumes its mode without a click, holding position until each axis has its first reading.
 
 ### 5.2 Modes
 
@@ -184,7 +185,7 @@ The heliostat's side is an input object, `/heliostat/artnet`, with writable `azi
 - `takeover` (default true): a write while not in `artnet` mode switches to `artnet`. Leaving is explicit (choosing another mode), so a console that stops sending doesn't hand control back by surprise.
 - No write for 5 s: state `artnetIdle`, the axes hold.
 
-**The receiver** (UDP 6454, ArtPoll reply, ArtDmx on one universe, 8- or 16-bit channels scaled to a range, a gate channel with a threshold) is not heliostat-specific. It is proposed to TesserKIT as a generic service, `/sys/artnet`, mapping channels to any tree paths as Timers maps times to paths (§13). TesserKIT has accepted it in principle (its DESIGN §5.9, *(proposed)*). Until it exists, `artnet.cpp` here implements the same receiver, behaving as that spec says (writes through the API, only on change; 16-bit scaling; the gate's threshold) so it can be swapped out without changing `/heliostat`. Its mapping is fixed: to `/heliostat/artnet` and helionext's defaults (universe 0, azimuth channels 1/2 over 0–360°, elevation 3/4 over 0–90°), drained non-blocking in `onTick`.
+**The receiver** (UDP 6454, ArtPoll reply, ArtDmx on one universe, 8- or 16-bit channels scaled to a range, a gate channel with a threshold) is not heliostat-specific. It is proposed to TesserKIT as a generic service, `/sys/artnet`, mapping channels to any tree paths as Timers maps times to paths (§13). TesserKIT is building it (Leo's go, 2026-10-11), so this repository has no receiver: the device maps `/sys/artnet` channels onto `/heliostat/artnet/azimuth` and `/elevation`.
 
 ### 5.7 GPS and time
 
@@ -199,13 +200,13 @@ Persisted nodes are marked *(p)*. Access: reads are public; operating nodes (mod
 ### 6.1 `/heliostat`
 
 ```
-/heliostat              label "Heliostat", ui.widget "x-sky" (§7.2)
+/heliostat              label "Heliostat" (drawn by x-sky in the Heliostat view, §7)
   mode *(p)             enum manual, track, sequence, artnet (default manual), ui.widget "segmented"
   state                 enum (§5.2), read-only, watched
-  enabled *(p)          boolean (default true): the TB6612's standby pin, label "Motors"
+  enabled *(p)          boolean (default false): both axes and the TB6612's standby pin, label "Motors"
   stop                  action, ui.style danger, ui.icon stop
-  source *(p)           string ≤ 24 (default "Sun"): "Sun" or a direction's name; validated
-  target *(p)           string ≤ 24 (default "Target"): a direction's name; validated
+  source *(p)           string ≤ 24 (default "Sun"): "Sun" or a direction's name; validated; ui.options "directions", ui.optionsExtra "Sun"
+  target *(p)           string ≤ 24 (default "Target"): a direction's name; validated; ui.options "directions"
   directions *(p)       keyed list (key "name"), ≤ 16: {name ≤ 24, azimuth 0–360 °, elevation −90–90 °}
                         "Sun" is reserved. Default: [{"Target", 180, 30}]
   sun/                  azimuth, elevation (°), read-only, watched
@@ -240,16 +241,18 @@ TesserKIT's `Network` names the device `heliostat-xxxx` (from the label "Heliost
 
 ### 7.1 Pages
 
+`x-sky` is placed by the view, not as `/heliostat`'s widget: on the node it would replace the generic card that holds the mode, the site and the park. The views are declared once (`heliostat::addViews()`) for the firmware and the simulator.
+
 TesserUI draws the root as cards: Heliostat, Azimuth, Elevation, Sequence, GPS, and `/sys` as its own page. Views (TesserUI §8, `tesserui::Views` on `dev.api()`) put daily use first:
 
 | View | Content |
 |---|---|
-| `Heliostat` (first) | `x-sky` full width; `mode`, `state`, `source`, `target`, `stop`; both axes' `position` and jog |
+| `Heliostat` (first) | `x-sky` over `/heliostat`; `mode`, `state`, `stop`; `source`, `target` (selects of the directions); both axes' `position` and `enabled` (jog when TesserMotion has it) |
 | `Sequence` | `x-keyframes` over `/sequence`, with `/heliostat/sequence/apply` and `loop` |
 
 ### 7.2 Custom elements
 
-Served from flash with `dev.web().asset("/ext/<name>.js", ...)`, minified and gzipped into a header by `web/build.mjs` (one HTTP handler each, within TesserKIT's default `extraHandlers(4)`). Together under 6 KB gzipped.
+Served from flash with `dev.web().asset("/ext/<name>.js", ..., gzipped)`, gzipped into a committed header (`src/heliostat/elements.h`) by `node web/build.mjs` (one HTTP handler each, within TesserKIT's default `extraHandlers(4)`). Together under 6 KB gzipped.
 
 - **`x-keyframes`**: TesserUI's example, unchanged. TesserMotion's sequencer tree is shaped for it.
 - **`x-sky`**: TesserUI's `sky.js` example draws the sun, a target and the normal, and a click writes `{targetAz, targetEl}`. The heliostat's target is a *named* direction, so it needs:
@@ -272,7 +275,7 @@ tiny-heliostat/
   docs/DESIGN.md
   CMakeLists.txt            the heliostat's code: an ESP-IDF component under idf.py, host library and tests under plain CMake
   src/Heliostat.h
-  src/heliostat/            sun, geometry, Tracker, Heliostat and its tree, artnet (until TesserKIT has it)
+  src/heliostat/            sun, geometry, Tracker, Heliostat and its tree, views, elements.h (generated)
   firmware/                 the ESP-IDF project: CMakeLists.txt, sdkconfig.defaults (TesserKIT's partition table)
     main/                   main.cpp, board.h, secrets.h (gitignored)
   web/elements/             sky.js; build.mjs → src/heliostat/elements.h
@@ -304,7 +307,8 @@ tiny-heliostat/
    - the persisted shape: a golden JSON of `api.persistedState()`, so a renamed setting shows as a diff;
    - the Art-Net receiver while it lives here (ArtPoll, ArtDmx, wrong universe, 8- and 16-bit channels).
 2. **Closed loop on the host:** the tracker and both axes against TesserMotion's simulated plant (`tessermotion_testing`), with `/sys` on TesserKIT's fake platform (`tesserkit_fake`), over a simulated day: the normal followed within tolerance, `maxSpeed` respected, parking at sunset.
-3. **On the heliostat:** `test/e2e_heliostat.py http://<ip>` over HTTP and WebSocket: the tree, modes and ownership, manual moves within tolerance, a sequence, an Art-Net packet sent from the script, persistence across a restart, tracking checked against the host's own sun computation. Motors move: limits on and `maxSpeed` low, with Leo's go-ahead (TesserMotion's AGENTS.md).
+3. **Simulator** (`build/heliostat_sim`): the firmware's tree on TesserKIT's fake platform (`tesserkit_fake`, so `/sys` is there too), both axes on TesserMotion's plants, the clock from the real one (`--at <epoch>`, `--speed <x>` to watch a day). `node ~/Dev/TesserUI/web/scripts/device.mjs --exe build/heliostat_sim --elements web/elements --port 8092` serves it with the real interface and the custom elements.
+4. **On the heliostat:** `test/e2e_heliostat.py http://<ip>` over HTTP and WebSocket: the tree, modes and ownership, manual moves within tolerance, a sequence, an Art-Net packet sent from the script, persistence across a restart, tracking checked against the host's own sun computation. Motors move: limits on and `maxSpeed` low, with Leo's go-ahead (TesserMotion's AGENTS.md).
 
 ## 12. Roadmap
 
@@ -314,7 +318,7 @@ TesserMotion's phases 2–4 (axes, sequencer, GPS) come before the heliostat's h
 |---|---|---|---|
 | 0 *(built)* | Repository, ESP-IDF project with TesserKIT's services, host CMake; USB flash of the heliostat with the new table (offsets and limits noted first) | The heliostat is provisioned from a phone and updated over OTA; footprint measured. Built and measured; not flashed yet. | — |
 | 1 *(done)* | `sun`, `geometry`, `Tracker`, `Heliostat` with their host tests | Host tests green: the tracker follows the sun and parks on the plant model. | TesserMotion phase 1 (fakes, plant) |
-| 2 | The axes and the tracker on hardware: manual, track, stop, night parking; `x-sky`; the Heliostat view (jog when TesserMotion has it) | A day of sun tracking onto a named target; timers switch modes. | TesserMotion phase 2, ownership (§13) |
+| 2 *(in progress)* | The axes and the tracker on hardware: manual, track, stop, night parking; `x-sky`; the Heliostat view (jog when TesserMotion has it) | A day of sun tracking onto a named target; timers switch modes. Done: the view, `x-sky`, the selects and the simulator; the heliostat flashed (2026-10-11, motors off). | TesserMotion phase 2, ownership (§13) |
 | 3 | Sequence with `apply`; GPS clock and site | A looping target sequence plays smoothly; the clock and site come from GPS. | TesserMotion phases 3, 4, sequencer callbacks (§13) |
 | 4 | Art-Net | A lighting console drives the mirror and takes over. | TesserKIT's Art-Net service, or ours |
 | 5 | README, `e2e_heliostat.py` complete, TesserKIT DESIGN §10.1 updated to what was built | | |
@@ -331,10 +335,12 @@ TesserMotion's phases 2–4 (axes, sequencer, GPS) come before the heliostat's h
 | `NmeaGps::onTime()` runs in the Motion task, and TesserKIT's `Time::external()` takes the API lock: document "store, don't call", or offer a polled accessor | TesserMotion, TesserKIT | §5.7 | accepted: polled `gps.takeTime(int64_t&)` with NmeaGps (phase 4) |
 | The fakes and the plant model usable by applications' tests | TesserMotion | §11 | accepted: `tessermotion_testing` target, phase 1 |
 | The same for TesserKIT's fake platform | TesserKIT | §11 | done: `tesserkit_fake` (host only; `fake.install(dev)` before `dev.begin()`; `test/demo_main.cpp` shows a simulator), TesserKIT 483d178 |
-| A generic Art-Net input service, `/sys/artnet`: universe, mappings `{path, coarse, fine, min, max}` and a gate channel with a threshold, ArtPoll reply, status | TesserKIT | §5.6 | accepted in principle: TesserKIT DESIGN §5.9 *(proposed)*; Leo decides when |
+| A generic Art-Net input service, `/sys/artnet`: universe, mappings `{path, coarse, fine, min, max}` and a gate channel with a threshold, ArtPoll reply, status | TesserKIT | §5.6 | being built (Leo's go, 2026-10-11): replaces the fixed-mapping receiver planned here |
 | TesserKIT DESIGN §10.1 points to this document; its §14 still lists keyed lists, arrays, object arguments and file nodes as in progress | TesserKIT | — | done, 483d178 (the link to this repository's URL once it exists) |
-| A select whose options are a keyed list's keys (`ui.options "directions"`) | TesserUI | `source`, `target` as dropdowns | at phase 2; a validated text field and `x-sky` clicks until then |
-| `x-sky` options: a named target, click to select, a source other than the sun, the park position | TesserUI example | §7.2 | at phase 2 |
+| A select whose options are a keyed list's keys (`ui.options "directions"`, `ui.optionsExtra "Sun"`) | TesserUI | `source`, `target` as dropdowns | done, TesserUI 31f890f |
+| `device.mjs --elements <dir>` | TesserUI | the simulator serves `web/elements/` | done, TesserUI 77946c9 |
+| TesserAPI added only `if(NOT TARGET tesser_core)` in host builds | TesserUI, TesserKIT | the simulator's build combines them with TesserMotion | done, TesserUI b43d293, TesserKIT a439b27 |
+| `x-sky` options: a named target, click to select, a source other than the sun, the park position | TesserUI example | §7.2 | TesserUI prefers options of its example: diff to send once the variant in `web/elements/` has run on the heliostat |
 
 ## 14. Open questions
 

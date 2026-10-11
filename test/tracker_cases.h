@@ -151,3 +151,55 @@ TEST(tracker_reports_axis_faults) {
     r.run(0.5f);
     CHECK_EQ(r.state(), "\"tracking\"");
 }
+
+TEST(tracker_fresh_heliostat_keeps_motors_off) {
+    // A fresh heliostat (nothing stored): both axes stay disabled, and the
+    // tree can't move them, until /heliostat/enabled is turned on.
+    Plant azPlant(90), elPlant(45);
+    tessermotion::Axis azimuth(azPlant, azPlant), elevation(elPlant, elPlant);
+    heliostat::Tracker tracker(azimuth, elevation);
+    heliostat::Heliostat helio(tracker, azimuth, elevation);
+    tessermotion::Motion motion;
+    motion.add(tracker);
+    motion.add(azimuth);
+    motion.add(elevation);
+    tesser::Api api;
+    api.mount("heliostat", helio);
+    motion.begin();
+    helio.start();
+    uint64_t now = 1000000;
+    for (int i = 0; i < 100; i++) {
+        azPlant.advance(0.02f);
+        elPlant.advance(0.02f);
+        now += 20000;
+        motion.step(now);
+    }
+    CHECK(!helio.enabled());
+    CHECK(!azimuth.enabled() && !elevation.enabled());
+    CHECK(azPlant.drivenDuty() == 0 && elPlant.drivenDuty() == 0);
+    CHECK(tracker.state() == heliostat::State::Disabled);
+}
+
+TEST(tracker_bridge_follows_the_axes) {
+    // The TB6612's standby is on while either axis is enabled, however it was
+    // enabled: an axis enabled on its own must be able to drive.
+    fake::Gpio gpio;
+    tessermotion::Tb6612Standby bridge(18, &gpio);
+    Plant azPlant(90), elPlant(45);
+    tessermotion::Axis azimuth(azPlant, azPlant), elevation(elPlant, elPlant);
+    heliostat::Tracker tracker(azimuth, elevation);
+    heliostat::Heliostat helio(tracker, azimuth, elevation, &bridge);
+    bridge.begin();  // as the channels' begin() do
+    helio.start();
+    CHECK(!gpio.level[18]);  // fresh: off
+    azimuth.enable(true);
+    helio.sync(1000, 0);
+    CHECK(gpio.level[18]);
+    azimuth.enable(false);
+    helio.sync(1020, 0);
+    CHECK(!gpio.level[18]);
+    helio.enable(true);
+    CHECK(gpio.level[18] && azimuth.enabled() && elevation.enabled());
+    helio.enable(false);
+    CHECK(!gpio.level[18] && !azimuth.enabled() && !elevation.enabled());
+}

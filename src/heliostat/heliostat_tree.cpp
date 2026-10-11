@@ -59,14 +59,17 @@ void describe(Object& o, Heliostat& h) {
             return Check::fail(Status::InvalidValue, "\"Sun\" or a direction's name");
         })
         .persist()
-        .doc("Where the light comes from");
+        .doc("Where the light comes from")
+        .ui("options", "directions")
+        .ui("optionsExtra", Heliostat::kSun);
     o.value("target", h.target)
         .validate([&h](const std::string& v) {
             if (v != Heliostat::kSun && h.find(v)) return Check::ok();
             return Check::fail(Status::InvalidValue, "a direction's name");
         })
         .persist()
-        .doc("Where the light goes");
+        .doc("Where the light goes")
+        .ui("options", "directions");
 
     auto& sun = o.object("sun").label("Sun");
     sun.value("azimuth", [&h] { return h.sun().azimuth; }).unit("°").watch();

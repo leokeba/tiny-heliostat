@@ -27,7 +27,8 @@ struct NamedDirection {
 
 class Heliostat {
 public:
-    // `standby` may be null (the axes are then only enabled and disabled).
+    // `standby` may be null. When given, it is on while either axis is
+    // enabled, and off otherwise.
     Heliostat(Tracker& tracker, tessermotion::Axis& azimuth, tessermotion::Axis& elevation,
               tessermotion::Tb6612Standby* standby = nullptr)
         : tracker_(tracker), azimuth_(azimuth), elevation_(elevation), standby_(standby) {}
@@ -69,13 +70,15 @@ public:
 
 private:
     void apply();
+    void standby();
 
     Tracker& tracker_;
     tessermotion::Axis& azimuth_;
     tessermotion::Axis& elevation_;
     tessermotion::Tb6612Standby* standby_;
-    bool enabled_ = true;
+    bool enabled_ = false;  // a fresh heliostat's motors stay off until enabled
     bool started_ = false;
+    bool bridgeOn_ = false;
     SunPosition sun_{0, -90};
     bool sunValid_ = false;
     uint32_t sunAtMs_ = 0;
