@@ -1,11 +1,14 @@
 // tiny-heliostat (docs/DESIGN.md): TesserKIT for Wi-Fi, time, updates,
-// backups, timers and accounts under /sys; TesserMotion for the two axes;
-// this repository's tracker and /heliostat tree.
+// files and backups, timers, accounts and the nodes nearby under /sys;
+// TesserMotion for the two axes; this repository's tracker and /heliostat
+// tree.
 //
 // Flash it, join the "heliostat-xxxx" network from a phone, and the
-// interface opens. A fresh heliostat boots in manual mode with its motors
-// off: check the axes' offsets, motor directions and limits, then turn
-// /heliostat/enabled on.
+// interface opens; or reach it from TesserUI's launcher
+// (https://leokeba.github.io/TesserKIT/): over USB, by its address, or listed
+// under Nearby by TesserUI's bridge. A fresh heliostat boots in manual mode
+// with its motors off: check the axes' offsets, motor directions and limits,
+// then turn /heliostat/enabled on.
 //
 // For development, a gitignored main/secrets.h may define WIFI_SSID and
 // WIFI_PASSWORD, and WIFI_TX_POWER (dBm) for boards with a weak supply.
@@ -31,10 +34,16 @@ tesserkit::System sys(dev);
 tesserkit::Network net(dev);
 tesserkit::Time timekeeper(dev);
 tesserkit::Firmware firmware(dev);
+tesserkit::Files files(dev);  // LittleFS: the stored backups
 tesserkit::Backup backup(dev);
 tesserkit::Timers timers(dev);
 tesserkit::Auth auth(dev);  // open until an admin account exists
 tesserkit::ArtNet artnet(dev);
+tesserkit::NowTp nowtp(dev);  // the nodes nearby over ESP-NOW (after Network: Wi-Fi first)
+// The launcher's USB way: envelopes on the console's UART, one per line, with
+// Admin access (physical access). Logs stay at warnings, so that few land in
+// the middle of a reply (sdkconfig.defaults).
+tesser::UartTransport serialApi(dev.api(), UART_NUM_0);
 
 Tb6612Standby bridge(board::kStandby);
 Tb6612Channel azimuthMotor(bridge, {.pwm = board::kAzimuthPwm, .in1 = board::kAzimuthIn1, .in2 = board::kAzimuthIn2});
@@ -67,6 +76,9 @@ extern "C" void app_main() {
     net.txPower(WIFI_TX_POWER);
 #endif
     timekeeper.defaultTz("CET-1CEST,M3.5.0,M10.5.0/3");  // Paris
+    // Updates from this repository's releases (.github/workflows/release.yml),
+    // and from any URL.
+    firmware.github("leokeba/tiny-heliostat", "tiny-heliostat-{target}.bin");
     // Art-Net onto the heliostat's input, helionext's channels: off until
     // turned on, so a console on the network can't take the mirror over.
     artnet.enable(false)
@@ -100,7 +112,9 @@ extern "C" void app_main() {
         helio.sync(nowMs, epochMs());
     });
 
+    dev.cors("https://leokeba.github.io");  // the launcher, reaching the heliostat by its address
     dev.begin();  // loads the stored settings
+    serialApi.begin();
     motion.start(50);
     helio.start();  // enables the axes and the bridge, unless stored off
 }

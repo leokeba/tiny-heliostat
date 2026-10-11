@@ -1,6 +1,6 @@
 # tiny-heliostat design
 
-Status: phases 0 and 1 done (2026-10-11): the firmware builds with every TesserKIT service and both TesserMotion axes; manual and track modes, the sun, night parking and the `/heliostat` tree are host-tested. Not yet on the heliostat. This is the specification the code will follow; when the two disagree, fix one of them. Sections marked *(later)* are committed to but not part of the first release.
+Status: phases 0 and 1 done (2026-10-11): the firmware builds with every TesserKIT service and both TesserMotion axes; manual and track modes, the sun, night parking and the `/heliostat` tree are host-tested. On the heliostat since 2026-10-11, both axes commissioned; Files, NowTP, the launcher and GitHub releases since 2026-10-12 (§6.2, §8). This is the specification the code will follow; when the two disagree, fix one of them. Sections marked *(later)* are committed to but not part of the first release.
 
 tiny-heliostat is [open-heliostat](https://github.com/open-heliostat/open-heliostat/tree/helionext) (branch `helionext`, local clone `~/Dev/open-heliostat`) rebuilt on [TesserKIT](https://github.com/leokeba/TesserKIT) and [TesserMotion](https://github.com/leokeba/TesserMotion) instead of an ESP32-sveltekit fork. It is TesserKIT's phase 3 (TesserKIT DESIGN §10.1, §15) and TesserMotion's first user (TesserMotion DESIGN §14, phase 5). Public repository, MIT license.
 
@@ -11,7 +11,7 @@ tiny-heliostat is [open-heliostat](https://github.com/open-heliostat/open-helios
 
   | Concern | Owner |
   |---|---|
-  | Wi-Fi, AP, time, OTA, backups, timers, users, status (`/sys`) | TesserKIT |
+  | Wi-Fi, AP, time, updates, files and backups, timers, users, the nodes nearby, status (`/sys`) | TesserKIT |
   | Motor driver (TB6612), encoder (MT6701), closed-loop axis, keyframe sequencer, GPS, the control task | TesserMotion |
   | Tree, transports, persistence; the web renderer and the `x-keyframes` element | TesserAPI, TesserUI |
   | Sun position, reflection, named directions, source and target, modes, night parking, `x-sky` | **tiny-heliostat** |
@@ -26,7 +26,7 @@ tiny-heliostat is [open-heliostat](https://github.com/open-heliostat/open-helios
 
 - Calibration (accelerometer calibration, mount orientation resolve, encoder linearization), mount tilt, relay autotune.
 - Other boards than the classic ESP32 DevKitC.
-- Several heliostats (helionext's remotes and ESP-NOW console): *(later)*, as TesserKIT NowTP peers.
+- Several heliostats working together (helionext's remotes and ESP-NOW console): *(later)*. TesserKIT's `NowTp` already shows the TesserKIT nodes nearby under `/peers` (§6.2).
 - MQTT *(later, TesserKIT's Mqtt bridge)*. Teleplot: replaced by TesserMotion's charts.
 - Settings migration from helionext: values are entered by hand after the first flash (§8).
 
@@ -44,7 +44,7 @@ tiny-heliostat is [open-heliostat](https://github.com/open-heliostat/open-helios
 | `ArtNetService` (UDP 6454, ArtPoll reply, coarse/fine channels, takeover) | Art-Net input mapping channels to `/heliostat/artnet` (§5.6) |
 | GPS (TinyGPSPlus) setting the clock | TesserMotion `NmeaGps`, polled by `sync()` for TesserKIT's `Time.external()` (§5.7) |
 | "Sync Time" button | `/sys/time/set` (TesserKIT) |
-| ESP32-sveltekit Wi-Fi, AP, NTP, OTA, core dump, status, analytics | TesserKIT `Network`, `Time`, `Firmware`, `System` |
+| ESP32-sveltekit Wi-Fi, AP, NTP, OTA and GitHub releases, core dump, status, analytics | TesserKIT `Network`, `Time`, `Firmware` (releases checked on the device), `System` |
 | `FT_SECURITY=0` (open device) | TesserKIT `Auth`: open until an admin account exists |
 
 ### 2.2 Changed
@@ -234,10 +234,15 @@ Persisted nodes are marked *(p)*. Access: reads are public; operating nodes (mod
 | `/sequence` | `Sequencer`, tracks `azimuth`, `elevation` | TesserMotion §9.2 |
 | `/gps` | `NmeaGps` | TesserMotion §9.3 |
 | `/motion` | `Motion` statistics, `stopAll` ("Control loop", in the menu's Axes group) | TesserMotion §9.4 |
-| `/sys/...` | `System`, `Network`, `Time`, `Firmware`, `Backup`, `Timers`, `Auth` | TesserKIT §5 |
+| `/sys/...` | `System`, `Network`, `Time`, `Firmware`, `Files`, `Backup`, `Timers`, `Auth`, `NowTp` | TesserKIT §5 |
+| `/peers` | the TesserKIT nodes `NowTp` finds, each with its page | TesserKIT §5.11 |
 | `/sys/artnet` | TesserKIT's Art-Net service, if accepted (§5.6) | — |
 
-TesserKIT's `Network` names the device `heliostat-xxxx` (from the label "Heliostat"); the AP is in fallback mode. `Firmware` takes uploads; URL downloads (130 KB of TLS) aren't enabled. TesserKIT's `onState()` calls `motion.stopAll()` when an update starts (TesserMotion §3.2).
+TesserKIT's `Network` names the device `heliostat-xxxx` (from the label "Heliostat"); the AP is in fallback mode. `Firmware` takes uploads and installs this repository's GitHub releases (`firmware.github()`, §9), checked a minute after coming online, then daily and on demand, and URLs too: about 130 KB of TLS, and a check waits for 44 KB of free heap. TesserKIT's `onState()` calls `motion.stopAll()` when an update starts (TesserMotion §3.2).
+
+TesserUI's launcher (https://leokeba.github.io/TesserKIT/) reaches the heliostat three ways: by its address (`dev.cors()` for the launcher's origin), over USB (TesserAPI's `UartTransport` on UART 0, with Admin access: whoever holds the cable holds the board; logs at warnings, so that few land in the middle of a reply), and through TesserUI's bridge, which finds it over mDNS (`_tesser._tcp`). On macOS, opening the port restarts the board.
+
+`NowTp` serves the tree to the TesserKIT nodes nearby over ESP-NOW, and mounts those it finds under `/peers`. Bluetooth is left out (about 200 KB of flash and 45 KB of heap; Leo, 2026-10-12).
 
 ## 7. Interface
 
@@ -266,9 +271,9 @@ Served from flash with `dev.web().asset("/ext/<name>.js", ..., gzipped)`, gzippe
 
 ## 8. Persistence and first flash
 
-- TesserAPI persistence in NVS (TesserKIT §6): one record per top-level node, debounced 2 s. No filesystem.
-- **Partition table:** TesserKIT's `tesserkit_4mb.csv` (two 1.94 MB OTA slots, core dump, no filesystem) replaces helionext's `min_spiffs.csv`. A partition table can't change over OTA, so the first flash is over USB (bootloader too: rollback is a bootloader setting). Updates are OTA after that.
-- **Settings** aren't migrated: helionext's LittleFS files go with the old table. The offsets and limits noted before flashing (§3), the site and the directions are entered again in the interface, and saved with `/sys/backup`.
+- TesserAPI persistence in NVS (TesserKIT §6): one record per top-level node, debounced 2 s. Stored backups in `Files` (LittleFS).
+- **Partition table:** TesserKIT's `tesserkit_4mb_files.csv` (two 1.75 MB OTA slots, 384 KB of LittleFS for `Files`, a core dump) replaces helionext's `min_spiffs.csv`. A partition table can't change over OTA, so the first flash is over USB (bootloader too: rollback is a bootloader setting). Updates are OTA after that. The heliostat had `tesserkit_4mb.csv` (no filesystem) from 2026-10-11 and moved to this table over USB on 2026-10-12. NVS is at the same offset in both, so the settings stayed; the `files` partition, over the old second slot, was formatted at its first mount.
+- **Settings** aren't migrated: helionext's LittleFS files go with the old table. The offsets and limits noted before flashing (§3), the site and the directions are entered again in the interface, and saved with `/sys/backup`: stored on the heliostat (`save`, the 10 newest kept, each restore storing what it replaces first) or downloaded.
 
 ## 9. Repository and build
 
@@ -278,15 +283,17 @@ tiny-heliostat/
   CMakeLists.txt            the heliostat's code: an ESP-IDF component under idf.py, host library and tests under plain CMake
   src/Heliostat.h
   src/heliostat/            sun, geometry, Tracker, Heliostat and its tree, views, elements.h (generated)
-  firmware/                 the ESP-IDF project: CMakeLists.txt, sdkconfig.defaults (TesserKIT's partition table)
+  firmware/                 the ESP-IDF project: CMakeLists.txt, sdkconfig.defaults (TesserKIT's partition table with Files)
     main/                   main.cpp, board.h, secrets.h (gitignored)
   web/elements/             sky.js; build.mjs → src/heliostat/elements.h
   test/                     host tests (TesserMotion's check.h and plant), e2e_heliostat.py
+  .github/workflows/        release.yml: host tests, then a firmware release
   README.md, LICENSE (MIT), AGENTS.md (gitignored)
 ```
 
-- **ESP-IDF** (≥ 5.2, TesserMotion's floor for the I2C master driver). TesserAPI, TesserUI, TesserKIT and TesserMotion found as siblings in `~/Dev` (`EXTRA_COMPONENT_DIRS`), then through the component manager once they are published.
-- `sdkconfig.defaults`: TesserKIT's example's (rollback, core dump to flash, WebSocket, `-Os`).
+- **ESP-IDF** (≥ 5.2, TesserMotion's floor for the I2C master driver). TesserAPI, TesserUI, TesserKIT, TesserMotion and NowTP found as siblings in `~/Dev` (`EXTRA_COMPONENT_DIRS`), then through the component manager once they are published.
+- `sdkconfig.defaults`: TesserKIT's example's (the table with Files, rollback, core dump to flash, WebSocket, `-Os`, logs at warnings).
+- **Releases:** each push to `main` runs the host tests, then TesserKIT's reusable `firmware.yml` builds the firmware against the libraries' `main` branches (its ESP-IDF 5.5 image) and publishes `vX.Y.Z` (the last tag's patch raised) with `tiny-heliostat-esp32.bin`, what `/sys/firmware/github` installs, and `tiny-heliostat-esp32-factory.bin`, the whole flash for a new board. `[skip ci]` in a commit message releases nothing.
 - Conventions: the Tesser libraries' (C++17, no exceptions, no RTTI, `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror` on the host, `uv` for Python, `pnpm` for the element build, Wi-Fi credentials only in gitignored `secrets.h`, no `Co-Authored-By` lines).
 
 ## 10. Footprint
@@ -299,6 +306,8 @@ tiny-heliostat/
 | `x-sky`, `x-keyframes` | < 6 KB |
 
 **Measured** (2026-10-11, ESP-IDF 6.1-dev, classic ESP32, `-Os`): the phase 1 firmware (every TesserKIT service, two TesserMotion axes, the tracker and `/heliostat`) is 1.05 MB (0x10c3a0), 46 % of the 1.94 MB slot free.
+
+**Measured** (2026-10-12, same toolchain): with `Files`, `NowTp`, GitHub releases (TLS) and the serial line, 1.40 MB (0x165da0), 20 % of the 1.75 MB slot free. On the heliostat, 114 KB of heap free once online, 95 KB at the lowest.
 
 ## 11. Testing
 
@@ -357,6 +366,7 @@ None at the moment.
 - **Night park at azimuth 180°, elevation 45°, below 0° of sun elevation; time zone Paris** (`CET-1CEST,M3.5.0,M10.5.0/3`) by default (Leo, 2026-10-11).
 - **`maxSpeed` 10 °/s by default** (Leo, 2026-10-11): every mode is slewed, so a mode change never swings the mirror at full speed.
 - **Generic parts in the libraries:** motors, encoders, axes, the sequencer and GPS are TesserMotion's; network, time, updates, timers and users are TesserKIT's. This repository keeps what only a heliostat needs.
+- **Files with stored backups, NowTP, TesserUI's launcher (CORS and the API on UART 0), updates from this repository's GitHub releases; no Bluetooth** (Leo, 2026-10-12).
 - **A mode with axis ownership instead of flags:** helionext's `enabled`, Art-Net's takeover and three sequencers all wrote targets; one persisted enum makes ownership explicit, shows in the UI, and can be scheduled with Timers.
 - **Tracking at the control rate through the slew**, instead of 1 Hz target jumps: smoother sequences, one motion limiter for every source of targets.
 - **Own sun position in double** instead of SolarPosition: more accurate (refraction), host-testable, no Arduino dependency.
