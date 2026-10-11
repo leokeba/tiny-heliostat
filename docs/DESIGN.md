@@ -80,6 +80,7 @@ One board: the deployed **classic ESP32 DevKitC, 4 MB flash, no PSRAM** (helione
 | GPS RX / TX, 9600 baud | 25 / 33 | `NmeaGps` on UART 1 |
 
 - **Mechanics:** azimuth over elevation (CAD in `~/Dev/heliostat-system/cad`). The axes' angles are the mirror normal's azimuth (compass: 0 = north, clockwise) and elevation (0 = horizon). Each axis's `sensor/config/offset` makes them so; its limits keep the mechanics off their stops.
+- **Commissioned** 2026-10-11 with `test/commission.py`: helionext's motor inverts carry over unchanged (azimuth off, elevation on); the sensor offsets and inverts too. Azimuth turns freely (no stops, no cable): no limits.
 - **Before the first flash,** the deployed unit's encoder offsets, inverts and limits are read from helionext (`GET /rest/heliostat/azimuth`, `/elevation`) and written down: they are calibrated values, entered again by hand (§8). helionext's limits are in its output frame (offset applied); TesserMotion takes limits in the raw sensor frame (`sensor/raw`), so each one is entered as `limit − offset` (mod 360), or read again from `sensor/raw` at the mechanical stops.
 - The pins are constants in `main/board.h`.
 

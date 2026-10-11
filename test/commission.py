@@ -58,7 +58,13 @@ class Device:
                         time.sleep(0.2)
 
 
-def ask(question):
+AUTO = False  # --yes: someone watches the mechanics and agreed to every step
+
+
+def ask(question, auto=True):
+    if AUTO:
+        print(f"{question} {'y' if auto else 'n'} (--yes)")
+        return auto
     return input(f"{question} [y/N] ").strip().lower() == "y"
 
 
@@ -177,7 +183,11 @@ def main():
     p.add_argument("--axis", choices=AXES, action="append")
     p.add_argument("--speed", type=float, default=5, help="maxSpeed during the tests, °/s (default 5)")
     p.add_argument("--step", type=float, default=5, help="the move test's step, ° (default 5)")
+    p.add_argument("--yes", action="store_true", help="answer yes to every motion (someone is watching), "
+                   "and leave the axes disabled")
     args = p.parse_args()
+    global AUTO
+    AUTO = args.yes
     dev = Device(args.url)
 
     print(f"Firmware: {dev.get('/sys/firmware/version')}, heliostat mode {dev.get('/heliostat/mode')}, "
@@ -195,7 +205,7 @@ def main():
                 continue
             if check_hold(dev, axis):
                 check_move(dev, axis, args.step)
-            keep = ask(f"\n  Leave {axis} enabled?")
+            keep = ask(f"\n  Leave {axis} enabled?", auto=False)
             if not keep:
                 dev.put(f"/{axis}/enabled", False)
         print("\nDone.")
