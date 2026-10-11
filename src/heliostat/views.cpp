@@ -6,7 +6,7 @@
 namespace heliostat {
 
 void addViews(tesserui::Views& views) {
-    auto& page = views.page("overview", "Overview");
+    auto& page = views.page("overview", "Overview").icon("home");
     page.card("Sky").widget("x-sky", "/heliostat").hint("script", elements::kSkyPath);
     auto& control = page.card("Control");
     control.node("/heliostat/mode").node("/heliostat/state");
