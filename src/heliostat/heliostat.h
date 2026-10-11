@@ -65,7 +65,8 @@ public:
     bool enabled() const { return enabled_; }
     void enable(bool on);
 
-    // Back to manual, holding where the axes are.
+    // Back to manual mode, holding where the axes are, with no jog and no
+    // motor driven by hand: everything stops.
     void stop();
 
     // Every TesserKIT tick, under the API lock. `epochMs` is the clock's UTC

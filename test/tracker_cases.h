@@ -215,3 +215,16 @@ TEST(tracker_bridge_follows_the_axes) {
     helio.enable(false);
     CHECK(!gpio.level[18] && !azimuth.enabled() && !elevation.enabled());
 }
+
+TEST(tracker_stop_zeroes_motors_driven_by_hand) {
+    Rig r;
+    r.run(0.5f);
+    CHECK(r.set("/azimuth/enabled", "false").status == Status::Ok);
+    CHECK(r.set("/azimuth/motor/output", "0.6").status == Status::Ok);
+    r.run(0.3f);
+    CHECK(r.azimuth.output() != 0);
+    CHECK(r.set("/heliostat/stop", "null").status == Status::Ok);
+    r.run(0.1f);
+    CHECK(r.azimuth.output() == 0);
+    CHECK(r.azPlant.drivenDuty() == 0);
+}

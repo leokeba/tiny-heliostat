@@ -48,6 +48,10 @@ void Heliostat::stop() {
     tracker_.setAim(aim);  // releases the axes on the next tick
     azimuth_.hold();
     elevation_.hold();
+    // A motor driven by hand on a disabled axis stops too (refused, and
+    // harmless, on an enabled one).
+    azimuth_.setManualOutput(0);
+    elevation_.setManualOutput(0);
 }
 
 const NamedDirection* Heliostat::find(const std::string& name) const {

@@ -35,7 +35,7 @@ void describe(Object& o, Heliostat& h) {
         .persist()
         .label("Motors")
         .doc("Both axes and the motor driver");
-    o.action("stop", [&h] { h.stop(); }).doc("Manual mode, holding where the axes are").ui("style", "danger").ui(
+    o.action("stop", [&h] { h.stop(); }).doc("Stops everything: manual mode, the axes holding where they are, motors driven by hand at 0").ui("style", "danger").ui(
         "icon", "stop");
 
     // Before the source and the target, so a stored state loads them first
