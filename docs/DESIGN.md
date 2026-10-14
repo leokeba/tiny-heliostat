@@ -1,6 +1,6 @@
 # tiny-heliostat design
 
-Status: phases 0 and 1 done (2026-10-11): the firmware builds with every TesserKIT service and both TesserMotion axes; manual and track modes, the sun, night parking and the `/heliostat` tree are host-tested. On the heliostat since 2026-10-11, both axes commissioned; Files, NowTP, the launcher and GitHub releases since 2026-10-12 (§6.2, §8). This is the specification the code will follow; when the two disagree, fix one of them. Sections marked *(later)* are committed to but not part of the first release.
+Status: phases 0 and 1 done (2026-10-11): the firmware builds with every TesserKIT service and both TesserMotion axes; manual and track modes, the sun, night parking and the `/heliostat` tree are host-tested. On the heliostat since 2026-10-11, both axes commissioned; Files, NowTP, the launcher and GitHub releases since 2026-10-12; UDP on the LAN, Peers and the log since 2026-10-14 (§6.2, §8). This is the specification the code will follow; when the two disagree, fix one of them. Sections marked *(later)* are committed to but not part of the first release.
 
 tiny-heliostat is [open-heliostat](https://github.com/open-heliostat/open-heliostat/tree/helionext) (branch `helionext`, local clone `~/Dev/open-heliostat`) rebuilt on [TesserKIT](https://github.com/leokeba/TesserKIT) and [TesserMotion](https://github.com/leokeba/TesserMotion) instead of an ESP32-sveltekit fork. It is TesserKIT's phase 3 (TesserKIT DESIGN §10.1, §15) and TesserMotion's first user (TesserMotion DESIGN §14, phase 5). Public repository, MIT license.
 
@@ -26,7 +26,7 @@ tiny-heliostat is [open-heliostat](https://github.com/open-heliostat/open-helios
 
 - Calibration (accelerometer calibration, mount orientation resolve, encoder linearization), mount tilt, relay autotune.
 - Other boards than the classic ESP32 DevKitC.
-- Several heliostats working together (helionext's remotes and ESP-NOW console): *(later)*. TesserKIT's `NowTp` already shows the TesserKIT nodes nearby under `/peers` (§6.2).
+- Several heliostats working together (helionext's remotes and ESP-NOW console): *(later)*. TesserKIT's `NowTp` and `UdpApi` already show the TesserKIT nodes nearby and on the LAN under `/peers` (§6.2).
 - MQTT *(later, TesserKIT's Mqtt bridge)*. Teleplot: replaced by TesserMotion's charts.
 - Settings migration from helionext: values are entered by hand after the first flash (§8).
 
@@ -234,15 +234,17 @@ Persisted nodes are marked *(p)*. Access: reads are public; operating nodes (mod
 | `/sequence` | `Sequencer`, tracks `azimuth`, `elevation` | TesserMotion §9.2 |
 | `/gps` | `NmeaGps` | TesserMotion §9.3 |
 | `/motion` | `Motion` statistics, `stopAll` ("Control loop", in the menu's Axes group) | TesserMotion §9.4 |
-| `/sys/...` | `System`, `Network`, `Time`, `Firmware`, `Files`, `Backup`, `Timers`, `Auth`, `NowTp` | TesserKIT §5 |
-| `/peers` | the TesserKIT nodes `NowTp` finds, each with its page | TesserKIT §5.11 |
+| `/sys/...` | `System`, `Network`, `Time`, `Firmware`, `Files`, `Backup`, `Timers`, `Auth`, `NowTp`, `UdpApi`, `Peers`, `Log` | TesserKIT §5 |
+| `/peers` | the TesserKIT nodes `NowTp` and `UdpApi` find, each with its page | TesserKIT §5.11, §5.18, §5.19 |
 | `/sys/artnet` | TesserKIT's Art-Net service, if accepted (§5.6) | — |
 
 TesserKIT's `Network` names the device `heliostat-xxxx` (from the label "Heliostat"); the AP is in fallback mode. `Firmware` takes uploads and installs this repository's GitHub releases (`firmware.github()`, §9), checked a minute after coming online, then daily and on demand, and URLs too: about 130 KB of TLS, and a check waits for 44 KB of free heap. TesserKIT's `onState()` calls `motion.stopAll()` when an update starts (TesserMotion §3.2).
 
 TesserUI's launcher (https://leokeba.github.io/TesserKIT/) reaches the heliostat three ways: by its address (`dev.cors()` for the launcher's origin), over USB (TesserAPI's `UartTransport` on UART 0, with Admin access: whoever holds the cable holds the board; logs at warnings, so that few land in the middle of a reply), and through TesserUI's bridge, which finds it over mDNS (`_tesser._tcp`). On macOS, opening the port restarts the board.
 
-`NowTp` serves the tree to the TesserKIT nodes nearby over ESP-NOW, and mounts those it finds under `/peers`. Bluetooth is left out (about 200 KB of flash and 45 KB of heap; Leo, 2026-10-12).
+`NowTp` serves the tree to the TesserKIT nodes nearby over ESP-NOW, and `UdpApi` to those on the LAN over UDP (port 8484, every interface, requests handled in TesserKIT's task); both mount the nodes they find under `/peers`, a device both reach once, and `Peers` (`/sys/peers`) sets the order its routes are tried in. A node on the LAN that presents no token gets `peerAccess` (User by default, enough to operate the mirror but not to change its settings), and while the heliostat has no admin account every client is Admin anyway, over HTTP as over UDP: the LAN is trusted. `Log` shows the firmware's lines (`/sys/log`, Admin only) at the console's level, warnings. Checked on the heliostat (2026-10-14): DEVKIT-R1 reached over NowTP and UDP, the Gledopto over UDP, and both mount the heliostat in return.
+
+Bluetooth is left out (about 200 KB of flash and 45 KB of heap; Leo, 2026-10-12).
 
 ## 7. Interface
 
@@ -293,7 +295,7 @@ tiny-heliostat/
 
 - **ESP-IDF** (≥ 5.2, TesserMotion's floor for the I2C master driver). TesserAPI, TesserUI, TesserKIT, TesserMotion and NowTP found as siblings in `~/Dev` (`EXTRA_COMPONENT_DIRS`), then through the component manager once they are published.
 - `sdkconfig.defaults`: TesserKIT's example's (the table with Files, rollback, core dump to flash, WebSocket, `-Os`, logs at warnings).
-- **Releases:** each push to `main` runs the host tests, then TesserKIT's reusable `firmware.yml` builds the firmware against the libraries' `main` branches (its ESP-IDF 5.5 image) and publishes `vX.Y.Z` (the last tag's patch raised) with `tiny-heliostat-esp32.bin`, what `/sys/firmware/github` installs, and `tiny-heliostat-esp32-factory.bin`, the whole flash for a new board. `[skip ci]` in a commit message releases nothing.
+- **Releases:** each push to `main` runs the host tests, then TesserKIT's reusable `firmware.yml` builds the firmware against the libraries' `main` branches (its ESP-IDF 5.5 image: 6.1-dev saves 15 KB of flash the heliostat doesn't need, and left 9 KB less heap at its lowest, 39 KB against 48 KB during the release check, measured on the heliostat on 2026-10-14) and publishes `vX.Y.Z` (the last tag's patch raised) with `tiny-heliostat-esp32.bin`, what `/sys/firmware/github` installs, and `tiny-heliostat-esp32-factory.bin`, the whole flash for a new board. `[skip ci]` in a commit message releases nothing.
 - Conventions: the Tesser libraries' (C++17, no exceptions, no RTTI, `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror` on the host, `uv` for Python, `pnpm` for the element build, Wi-Fi credentials only in gitignored `secrets.h`, no `Co-Authored-By` lines).
 
 ## 10. Footprint
@@ -308,6 +310,8 @@ tiny-heliostat/
 **Measured** (2026-10-11, ESP-IDF 6.1-dev, classic ESP32, `-Os`): the phase 1 firmware (every TesserKIT service, two TesserMotion axes, the tracker and `/heliostat`) is 1.05 MB (0x10c3a0), 46 % of the 1.94 MB slot free.
 
 **Measured** (2026-10-12, same toolchain): with `Files`, `NowTp`, GitHub releases (TLS) and the serial line, 1.40 MB (0x165da0), 20 % of the 1.75 MB slot free. On the heliostat, 114 KB of heap free once online, 95 KB at the lowest.
+
+**Measured** (2026-10-14, ESP-IDF 5.5, the libraries of that day): with `UdpApi`, `Peers` and `Log`, 1.52 MB (1,591,424 bytes), 13 % of the slot free (1.50 MB with 6.1-dev). On the heliostat, 99 KB of heap free once online, 48 KB at the lowest (the release check's TLS); the three services cost about 17 KB of heap.
 
 ## 11. Testing
 

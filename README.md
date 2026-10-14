@@ -4,7 +4,7 @@ Firmware for a small two-axis heliostat: an ESP32 that turns a mirror to reflect
 
 It is [open-heliostat](https://github.com/open-heliostat/open-heliostat/tree/helionext)'s `helionext` firmware rebuilt as an application of three libraries instead of an ESP32-sveltekit fork:
 
-- [TesserKIT](https://github.com/leokeba/TesserKIT): Wi-Fi with a captive portal, time, OTA updates from this repository's releases, files and backups, timers, users, the nodes nearby over ESP-NOW and status, under `/sys`.
+- [TesserKIT](https://github.com/leokeba/TesserKIT): Wi-Fi with a captive portal, time, OTA updates from this repository's releases, files and backups, timers, users, the nodes nearby over ESP-NOW and on the LAN over UDP, the log and status, under `/sys`.
 - [TesserMotion](https://github.com/leokeba/TesserMotion): the TB6612 motor driver, MT6701 encoders, closed-loop axes, the keyframe sequencer and GPS.
 - [TesserAPI](https://github.com/leokeba/TesserAPI) and [TesserUI](https://github.com/leokeba/TesserUI): the device's tree, reachable over HTTP and WebSocket, drawn in the browser without UI code.
 

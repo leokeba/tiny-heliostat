@@ -1,5 +1,6 @@
 // tiny-heliostat (docs/DESIGN.md): TesserKIT for Wi-Fi, time, updates,
-// files and backups, timers, accounts and the nodes nearby under /sys;
+// files and backups, timers, accounts, the log and the nodes nearby and on
+// the LAN under /sys;
 // TesserMotion for the two axes; this repository's tracker and /heliostat
 // tree.
 //
@@ -40,6 +41,9 @@ tesserkit::Timers timers(dev);
 tesserkit::Auth auth(dev);  // open until an admin account exists
 tesserkit::ArtNet artnet(dev);
 tesserkit::NowTp nowtp(dev);  // the nodes nearby over ESP-NOW (after Network: Wi-Fi first)
+tesserkit::UdpApi udp(dev);   // the nodes on the LAN over UDP
+tesserkit::Peers peers(dev);  // how the nodes under /peers are reached: UDP, NowTP, in which order
+tesserkit::Log logs(dev);     // the firmware's log, as events and a file
 // The launcher's USB way: envelopes on the console's UART, one per line, with
 // Admin access (physical access). Logs stay at warnings, so that few land in
 // the middle of a reply (sdkconfig.defaults).
