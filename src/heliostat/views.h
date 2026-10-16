@@ -7,6 +7,8 @@
 #include "tesserui/views.h"
 #include "tessermotion/axis.h"
 #include "tessermotion/motion.h"
+#include "tessermotion/nmea_gps.h"
+#include "tessermotion/tilt.h"
 
 namespace heliostat {
 
@@ -19,5 +21,9 @@ void addViews(tesserui::Views& views);
 // (/motion) under "Axes". Before Device::begin().
 void mountTree(tesser::Api& api, Heliostat& helio, tessermotion::Axis& azimuth, tessermotion::Axis& elevation,
                tessermotion::Motion& motion);
+
+// The GPS (/gps) and the accelerometer's tilt (/tilt), under "Sensors", for
+// the firmware, after mountTree().
+void mountSensors(tesser::Api& api, tessermotion::NmeaGps& gps, tessermotion::Tilt& tilt);
 
 }  // namespace heliostat

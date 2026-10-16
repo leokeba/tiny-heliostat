@@ -59,10 +59,17 @@ Mt6701 azimuthEncoder(azimuthBus);
 Mt6701 elevationEncoder(elevationBus);
 Axis azimuth(azimuthEncoder, azimuthMotor);
 Axis elevation(elevationEncoder, elevationMotor);
+UartPort gpsUart({.rx = board::kGpsRx, .tx = board::kGpsTx});  // UART 1, 9600 baud
+NmeaGps gps(gpsUart);
+Adxl345 accelerometer(azimuthBus);  // beside the azimuth's encoder
+Tilt tilt(accelerometer);
 Motion motion;
 
 heliostat::Tracker tracker(azimuth, elevation);
 heliostat::Heliostat helio(tracker, azimuth, elevation, &bridge);
+
+// The GPS sets the clock at most this often (DESIGN section 5.7).
+constexpr uint32_t kGpsClockEveryMs = 60000;
 
 int64_t epochMs() {
     timeval tv;
@@ -98,9 +105,12 @@ extern "C" void app_main() {
     motion.add(tracker);
     motion.add(azimuth);
     motion.add(elevation);
+    motion.add(gps);
+    motion.add(tilt);
 
     auto& api = dev.api();
     heliostat::mountTree(api, helio, azimuth, elevation, motion);
+    heliostat::mountSensors(api, gps, tilt);
     static tesserui::Views views(api);
     heliostat::addViews(views);
     namespace el = heliostat::elements;
@@ -110,10 +120,28 @@ extern "C" void app_main() {
     dev.onState([](tesserkit::State s) {
         if (s == tesserkit::State::Updating) motion.stopAll();
     });
-    // The tree to the tracker, in TesserKIT's task (DESIGN section 4.2).
+    // The tree to the tracker, in TesserKIT's task (DESIGN section 4.2), and
+    // the GPS to the site and the clock (section 5.7). Time::external() takes
+    // the API lock, so it comes after it is released.
     dev.onTick([&api](uint32_t nowMs) {
-        tesser::Lock lock(api);
-        helio.sync(nowMs, epochMs());
+        static uint32_t clockSetMs = 0;
+        static bool clockSet = false;
+        int64_t gpsMs = 0;
+        bool gpsTime = gps.takeTime(gpsMs);
+        NmeaGps::Fix f = gps.fix();
+        bool gpsClock;
+        {
+            tesser::Lock lock(api);
+            helio.gps({f.quality != GpsFix::None && f.ageMs >= 0 && f.ageMs < static_cast<int32_t>(NmeaGps::kStaleMs),
+                       f.satellites, f.latitude, f.longitude});
+            gpsClock = helio.gpsClock;
+            helio.sync(nowMs, epochMs());
+        }
+        if (gpsTime && gpsClock && (!clockSet || nowMs - clockSetMs >= kGpsClockEveryMs)) {
+            timekeeper.external(gpsMs);
+            clockSet = true;
+            clockSetMs = nowMs;
+        }
     });
 
     dev.cors("https://leokeba.github.io");  // the launchers (its own, TesserKIT's), reaching it by its address

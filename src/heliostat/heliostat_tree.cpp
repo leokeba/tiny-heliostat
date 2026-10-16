@@ -82,8 +82,17 @@ void describe(Object& o, Heliostat& h) {
     normal.value("elevation", [&h] { return h.tracker().normal().elevation; }).unit("°").ui("precision", 1).watch();
 
     auto& site = o.object("site").label("Site").persist().writeAccess(Access::Admin).ui("collapsed");
-    site.value("latitude", h.latitude).range(-90, 90).step(0.0001).unit("°");
-    site.value("longitude", h.longitude).range(-180, 180).step(0.0001).unit("°").doc("East positive");
+    h.siteNodes(&site.value("latitude", h.latitude).range(-90, 90).step(0.0001).unit("°"),
+                &site.value("longitude", h.longitude).range(-180, 180).step(0.0001).unit("°").doc("East positive"));
+    site.value("followGps", h.followGps)
+        .label("Follow the GPS")
+        .doc("The site follows the GPS's fix when it moves by more than about 100 m");
+    site.value("gpsClock", h.gpsClock).label("Clock from the GPS").doc("The GPS sets the clock");
+    site.action("fromGps", [&h]() -> Check {
+            if (h.siteFromGps()) return Check::ok();
+            return Check::fail(Status::NotAllowed, "no GPS fix with 4 satellites or more");
+        })
+        .label("Take the GPS's position");
 
     auto& artnet = o.object("artnet")
                        .label("Art-Net")

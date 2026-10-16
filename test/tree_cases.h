@@ -56,3 +56,45 @@ TEST(tree_persists_and_restores) {
     CHECK(r.helio.parkAzimuth == 90 && r.helio.parkElevation == 10);
     CHECK(!r.azimuth.enabled());
 }
+
+TEST(site_from_gps) {
+    Rig r;
+    using Fix = heliostat::Heliostat::GpsFix;
+    // No fix, or too few satellites: refused, the site unchanged.
+    CHECK(r.set("/heliostat/site/fromGps", "null").status == Status::NotAllowed);
+    r.helio.gps(Fix{true, 3, 43.62, 1.42});
+    CHECK(r.set("/heliostat/site/fromGps", "null").status == Status::NotAllowed);
+    CHECK(r.helio.latitude == 48.8566);
+    r.helio.gps(Fix{true, 7, 43.62, 1.42});
+    CHECK(r.set("/heliostat/site/fromGps", "null").status == Status::Ok);
+    CHECK(r.helio.latitude == 43.62 && r.helio.longitude == 1.42);
+    CHECK_EQ(r.get("/heliostat/site/latitude").body, "43.62");
+    // Without followGps, a new fix leaves the site.
+    r.helio.gps(Fix{true, 7, 44, 2});
+    CHECK(r.helio.latitude == 43.62);
+}
+
+TEST(site_follows_gps) {
+    Rig r;
+    using Fix = heliostat::Heliostat::GpsFix;
+    // Written through the tree, the site keeps a float's precision (ArduinoJson
+    // parses 43.62 as 43.6199989): about 0.1 m.
+    auto at = [&r](double lat, double lon) {
+        return fabs(r.helio.latitude - lat) < 1e-5 && fabs(r.helio.longitude - lon) < 1e-5;
+    };
+    CHECK(r.set("/heliostat/site", R"({"followGps":true,"latitude":43.62,"longitude":1.42})").status == Status::Ok);
+    // Within 0.001°: kept, so the settings aren't rewritten at every fix.
+    r.helio.gps(Fix{true, 7, 43.6205, 1.4195});
+    CHECK(at(43.62, 1.42));
+    // Further: followed, unless the fix is poor or stale.
+    r.helio.gps(Fix{true, 3, 43.63, 1.42});
+    r.helio.gps(Fix{false, 9, 43.63, 1.42});
+    CHECK(at(43.62, 1.42));
+    r.helio.gps(Fix{true, 7, 43.6215, 1.42});
+    CHECK(at(43.6215, 1.42));
+    // Persisted with the site.
+    std::string stored = r.api.persistedState();
+    Rig r2;
+    CHECK(r2.api.restore(stored) == Status::Ok);
+    CHECK(r2.helio.followGps && r2.helio.gpsClock && fabs(r2.helio.latitude - 43.6215) < 1e-5);
+}

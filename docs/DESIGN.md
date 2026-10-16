@@ -59,7 +59,7 @@ tiny-heliostat is [open-heliostat](https://github.com/open-heliostat/open-helios
 
 | helionext | Why |
 |---|---|
-| `AccelCalibService`, `MountOrientationResolveService`, `AccelerometerCalibration*`, the ADXL345 | Calibration; doesn't work. The ADXL345 stays on the board, uninitialized. |
+| `AccelCalibService`, `MountOrientationResolveService`, `AccelerometerCalibration*` | Calibration; doesn't work. The ADXL345 is read and shown (`/tilt`, TesserMotion's `Tilt`, Leo, 2026-10-16), not used. |
 | `mountOrientation` (tilt, tilt azimuth) and its transform | Leo's decision: not now. Reflection assumes a level mount. |
 | Relay autotune | Not now. TesserMotion has a corrected one; the heliostat leaves it out (§13). |
 | TMC5160, FastAccelStepper, closed-loop stepper, `SourceTargetSequencer`, `EncoderService`, `LightState*`, standalone motor and servo services | Dead code. |
@@ -75,20 +75,21 @@ One board: the deployed **classic ESP32 DevKitC, 4 MB flash, no PSRAM** (helione
 | Azimuth PWM / IN1 / IN2 | 16 / 17 / 5 | `Tb6612Channel` |
 | Elevation PWM / IN1 / IN2 | 22 / 21 / 19 | `Tb6612Channel` |
 | TB6612 STBY | 18 | `Tb6612Standby`, switched by `/heliostat/enabled` |
-| I2C bus 1 SDA / SCL | 13 / 14 | azimuth `Mt6701` (the unused ADXL345 is on this bus too, at 0x53) |
+| I2C bus 1 SDA / SCL | 13 / 14 | azimuth `Mt6701`, and the ADXL345 at 0x53 (`Adxl345`, read by `Tilt`) |
 | I2C bus 2 SDA / SCL | 27 / 26 | elevation `Mt6701` |
 | GPS RX / TX, 9600 baud | 25 / 33 | `NmeaGps` on UART 1 |
 
 - **Mechanics:** azimuth over elevation (CAD in `~/Dev/heliostat-system/cad`). The axes' angles are the mirror normal's azimuth (compass: 0 = north, clockwise) and elevation (0 = horizon). Each axis's `sensor/config/offset` makes them so; its limits keep the mechanics off their stops.
 - **Commissioned** 2026-10-11 with `test/commission.py`: helionext's motor inverts carry over unchanged (azimuth off, elevation on); the sensor offsets and inverts too. Azimuth turns freely (no stops, no cable): no limits.
-- **Before the first flash,** the deployed unit's encoder offsets, inverts and limits are read from helionext (`GET /rest/heliostat/azimuth`, `/elevation`) and written down: they are calibrated values, entered again by hand (§8). helionext's limits are in its output frame (offset applied); TesserMotion takes limits in the raw sensor frame (`sensor/raw`), so each one is entered as `limit − offset` (mod 360), or read again from `sensor/raw` at the mechanical stops.
+- **Before the first flash,** the deployed unit's encoder offsets, inverts and limits are read from helionext (`GET /rest/heliostat/azimuth`, `/elevation`) and written down: they are calibrated values, entered again by hand (§8). helionext's limits are in its output frame (offset applied); TesserMotion takes limits in the raw sensor frame (`sensor/raw`), so each one is entered as `limit − offset` (mod 360), or `offset − limit` with the sensor inverted (the two ends then swap: the first heliostat's 20–120° with offset 319 is raw 199→299), or read again from `sensor/raw` at the mechanical stops. helionext's settings are files in its LittleFS partition (`/config/heliostat.json`), so a whole-flash backup holds them too, readable with `littlefs-python`.
+- **A second heliostat** (2026-10-16), the same board with the ADXL345 and the GPS fitted: flashed from the v0.1.2 release, its helionext flash kept. With the ADXL345 read at 10 Hz on the azimuth's bus, the encoder had no faults; the GPS gave a fix with 6–8 satellites and set the clock; the control loop's tick stayed under 3.7 ms of its 20.
 - The pins are constants in `main/board.h`.
 
 ## 4. Architecture
 
 ```
  browser (TesserUI) ── HTTP / WebSocket ──▶ tesser::Api ◀── /sys: TesserKIT services
-                                              │  /heliostat (here)   /azimuth /elevation /sequence /gps /motion (TesserMotion)
+                                              │  /heliostat (here)   /azimuth /elevation /sequence /gps /tilt /motion (TesserMotion)
  TesserKIT task (20 ms) ── api.poll, services, onTick:
      Heliostat::sync()  ── under the API lock: sun position (1 Hz), resolve source and target ──▶ Tracker::setAim() (Motion's lock)
                          ── pending GPS time ──▶ Time::external()
@@ -123,7 +124,7 @@ TesserMotion's concurrency rules apply (its §3.5): the API lock, then Motion's 
 - **`Heliostat::sync()`** (in TesserKIT's `onTick`, under the API lock) is the only bridge from the tree to the tracker. Once a second it computes the sun position. Every tick it resolves `source` and `target` against `directions` into unit vectors, and hands those, the mode and the park settings to the `Tracker` (`setAim()`, a copy under Motion's lock). Names never reach the Motion task, so renaming or removing a direction needs no hook: it takes effect on the next sync.
 - **The Tracker is a TesserMotion `Part`** (`begin`, `sense` outside the lock, `update` under Motion's lock, `stop`), added after the sequencer and before the axes, so `update()` runs in that order. Motion's lock isn't recursive: inside `update()` the tracker calls the axes' lock-free variants (`setTargetLocked()` and the like; names to confirm when TesserMotion commits).
 - **Readouts** (`normal`, `state`) are getters over the tracker's last result under Motion's lock, with `.watch()`, sampled only while someone is subscribed.
-- **GPS time:** `Time::external()` takes the API lock, so it is never called from the Motion task. `sync()` polls TesserMotion's `gps.takeTime()` and passes what it gets to `Time::external()` (§5.7).
+- **GPS time:** `Time::external()` takes the API lock, so it is never called from the Motion task. The firmware's `onTick` polls TesserMotion's `gps.takeTime()` and `gps.fix()` (both take Motion's lock), hands the fix to `Heliostat::gps()` under the API lock, and calls `Time::external()` once the lock is released (§5.7).
 
 ## 5. Behaviour
 
@@ -191,9 +192,9 @@ The heliostat's side is an input object, `/heliostat/artnet`, with writable `azi
 
 ### 5.7 GPS and time
 
-- TesserMotion's `NmeaGps` on UART 1 (its §6.2), mounted at `/gps`.
-- **Clock:** `sync()` polls `gps.takeTime()` and calls `timekeeper.external()` with it at most once a minute (TesserKIT ranks an external source above SNTP and the browser). `/heliostat/site/gpsClock` *(p)*, default true, turns it off.
-- **Site:** `/heliostat/site/fromGps` copies the fix (with ≥ 4 satellites) into `latitude` and `longitude`. With `followGps`, it is done automatically whenever the fix moves more than 0.001° (about 100 m), so NVS isn't rewritten every second.
+- TesserMotion's `NmeaGps` on UART 1 (its §6.2), mounted at `/gps`; the ADXL345 through TesserMotion's `Tilt` at `/tilt` (x, y, z, pitch, roll), shown only: calibration and the mount's tilt stay out (§2.3). Both in the menu's Sensors group.
+- **Clock:** the firmware's `onTick` polls `gps.takeTime()` and calls `timekeeper.external()` with it at most once a minute (TesserKIT ranks an external source above SNTP and the browser). `/heliostat/site/gpsClock` *(p)*, default true, turns it off.
+- **Site:** `/heliostat/site/fromGps` copies the fix (with ≥ 4 satellites, younger than NmeaGps's 3 s staleness) into `latitude` and `longitude`, or answers `not_allowed`. With `followGps` *(p)*, default false, it is done automatically whenever the fix moves more than 0.001° (about 100 m), so NVS isn't rewritten every second.
 
 ## 6. The tree
 
@@ -232,7 +233,8 @@ Persisted nodes are marked *(p)*. Access: reads are public; operating nodes (mod
 |---|---|---|
 | `/azimuth`, `/elevation` | `Axis` | TesserMotion §9.1, without `autotune/` (§13) |
 | `/sequence` | `Sequencer`, tracks `azimuth`, `elevation` | TesserMotion §9.2 |
-| `/gps` | `NmeaGps` | TesserMotion §9.3 |
+| `/gps` | `NmeaGps` ("GPS", in the menu's Sensors group) | TesserMotion §9.3 |
+| `/tilt` | `Tilt` over `Adxl345`, on the azimuth's I2C bus ("Tilt", Sensors) | TesserMotion §9 |
 | `/motion` | `Motion` statistics, `stopAll` ("Control loop", in the menu's Axes group) | TesserMotion §9.4 |
 | `/sys/...` | `System`, `Network`, `Time`, `Firmware`, `Files`, `Backup`, `Timers`, `Auth`, `NowTp`, `UdpApi`, `Peers`, `Log` | TesserKIT §5 |
 | `/peers` | the TesserKIT nodes `NowTp` and `UdpApi` find, each with its page | TesserKIT §5.11, §5.18, §5.19 |
@@ -240,7 +242,7 @@ Persisted nodes are marked *(p)*. Access: reads are public; operating nodes (mod
 
 TesserKIT's `Network` names the device `heliostat-xxxx` (from the label "Heliostat"); the AP is in fallback mode. `Firmware` takes uploads and installs this repository's GitHub releases (`firmware.github()`, §9), checked a minute after coming online, then daily and on demand, and URLs too: about 130 KB of TLS, and a check waits for 44 KB of free heap. TesserKIT's `onState()` calls `motion.stopAll()` when an update starts (TesserMotion §3.2).
 
-TesserUI's launcher (https://leokeba.github.io/TesserKIT/) reaches the heliostat three ways: by its address (`dev.cors()` for the launcher's origin), over USB (TesserAPI's `UartTransport` on UART 0, with Admin access: whoever holds the cable holds the board; logs at warnings, so that few land in the middle of a reply), and through TesserUI's bridge, which finds it over mDNS (`_tesser._tcp`). On macOS, opening the port restarts the board.
+The heliostat's launcher (https://leokeba.github.io/tiny-heliostat/, §9), like TesserKIT's, reaches it three ways: by its address (`dev.cors()` for the launcher's origin), over USB (TesserAPI's `UartTransport` on UART 0, with Admin access: whoever holds the cable holds the board; logs at warnings, so that few land in the middle of a reply), and through TesserUI's bridge, which finds it over mDNS (`_tesser._tcp`). On macOS, opening the port restarts the board.
 
 `NowTp` serves the tree to the TesserKIT nodes nearby over ESP-NOW, and `UdpApi` to those on the LAN over UDP (port 8484, every interface, requests handled in TesserKIT's task); both mount the nodes they find under `/peers`, a device both reach once, and `Peers` (`/sys/peers`) sets the order its routes are tried in. A node on the LAN that presents no token gets `peerAccess` (User by default, enough to operate the mirror but not to change its settings), and while the heliostat has no admin account every client is Admin anyway, over HTTP as over UDP: the LAN is trusted. `Log` shows the firmware's lines (`/sys/log`, Admin only) at the console's level, warnings. Checked on the heliostat (2026-10-14): DEVKIT-R1 reached over NowTP and UDP, the Gledopto over UDP, and both mount the heliostat in return.
 
@@ -341,7 +343,7 @@ TesserMotion's phases 2–4 (axes, sequencer, GPS) come before the heliostat's h
 | 0 *(built)* | Repository, ESP-IDF project with TesserKIT's services, host CMake; USB flash of the heliostat with the new table (offsets and limits noted first) | The heliostat is provisioned from a phone and updated over OTA; footprint measured. Built and measured; not flashed yet. | — |
 | 1 *(done)* | `sun`, `geometry`, `Tracker`, `Heliostat` with their host tests | Host tests green: the tracker follows the sun and parks on the plant model. | TesserMotion phase 1 (fakes, plant) |
 | 2 *(in progress)* | The axes and the tracker on hardware: manual, track, stop, night parking; `x-sky`; the Heliostat view (jog when TesserMotion has it) | A day of sun tracking onto a named target; timers switch modes. Done: the view, `x-sky`, the selects and the simulator; the heliostat flashed (2026-10-11, motors off). | TesserMotion phase 2, ownership (§13) |
-| 3 | Sequence with `apply`; GPS clock and site | A looping target sequence plays smoothly; the clock and site come from GPS. | TesserMotion phases 3, 4, sequencer callbacks (§13) |
+| 3 *(GPS done)* | Sequence with `apply`; GPS clock and site | A looping target sequence plays smoothly; the clock and site come from GPS. GPS done (2026-10-16, on the second heliostat): fix, clock and `fromGps`; the sequence remains. | TesserMotion phases 3, 4, sequencer callbacks (§13) |
 | 4 *(built)* | Art-Net | A lighting console drives the mirror and takes over. Host-tested, and end to end in the simulator (`--dmx`); not yet with a real console. | TesserKIT's Art-Net service (8a30a08) |
 | 5 | README, `e2e_heliostat.py` complete, TesserKIT DESIGN §10.1 updated to what was built | | |
 
@@ -354,7 +356,7 @@ TesserMotion's phases 2–4 (axes, sequencer, GPS) come before the heliostat's h
 | `Sequencer` start and stop callbacks | TesserMotion | sequence mode (§5.5) | accepted, with the Sequencer (phase 3) |
 | Jog on `Axis` (two `hold` actions, `jogSpeed`, a 1 s deadman, limits and claims respected) | TesserMotion | manual mode, the Heliostat view | accepted, after phase 2 |
 | Autotune optional: not described (and not linked) unless the application asks | TesserMotion | §2.3 | accepted: autotune is deferred, opt-in when it comes |
-| `NmeaGps::onTime()` runs in the Motion task, and TesserKIT's `Time::external()` takes the API lock: document "store, don't call", or offer a polled accessor | TesserMotion, TesserKIT | §5.7 | accepted: polled `gps.takeTime(int64_t&)` with NmeaGps (phase 4) |
+| `NmeaGps::onTime()` runs in the Motion task, and TesserKIT's `Time::external()` takes the API lock: document "store, don't call", or offer a polled accessor | TesserMotion, TesserKIT | §5.7 | done: `gps.takeTime(int64_t&)`, TesserMotion 73fde23 |
 | The fakes and the plant model usable by applications' tests | TesserMotion | §11 | accepted: `tessermotion_testing` target, phase 1 |
 | The same for TesserKIT's fake platform | TesserKIT | §11 | done: `tesserkit_fake` (host only; `fake.install(dev)` before `dev.begin()`; `test/demo_main.cpp` shows a simulator), TesserKIT 483d178 |
 | A generic Art-Net input service, `/sys/artnet`: universe, mappings `{path, coarse, fine, min, max}` and a gate channel with a threshold, ArtPoll reply, status | TesserKIT | §5.6 | being built (Leo's go, 2026-10-11): replaces the fixed-mapping receiver planned here |
@@ -362,6 +364,7 @@ TesserMotion's phases 2–4 (axes, sequencer, GPS) come before the heliostat's h
 | A select whose options are a keyed list's keys (`ui.options "directions"`, `ui.optionsExtra "Sun"`) | TesserUI | `source`, `target` as dropdowns | done, TesserUI 31f890f |
 | `device.mjs --elements <dir>` | TesserUI | the simulator serves `web/elements/` | done, TesserUI 77946c9 |
 | TesserAPI added only `if(NOT TARGET tesser_core)` in host builds | TesserUI, TesserKIT | the simulator's build combines them with TesserMotion | done, TesserUI b43d293, TesserKIT a439b27 |
+| NmeaGps and Adxl345/Tilt (TesserMotion §6), the ADXL345 sharing the azimuth MT6701's bus | TesserMotion | §5.7, `/tilt` | done, 73fde23 (checked on the second heliostat, below §3) |
 | Pin TesserAPI in TesserMotion's host build when it fetches it (it fetches `main` without a sibling checkout), as TesserKIT does with its `deps.lock` | TesserMotion | reproducible builds of TesserMotion alone; the heliostat checks TesserAPI out itself | to ask |
 | `x-sky` options: a named target, click to select, a source other than the sun, the park position | TesserUI example | §7.2 | TesserUI prefers options of its example: diff to send once the variant in `web/elements/` has run on the heliostat |
 

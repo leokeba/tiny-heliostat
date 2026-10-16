@@ -1,5 +1,7 @@
 #include "heliostat/heliostat.h"
 
+#include <math.h>
+
 namespace heliostat {
 
 void Heliostat::start() {
@@ -34,6 +36,26 @@ void Heliostat::setMode(Mode m) {
     if (mode == m) return;
     mode = m;
     if (modeNode_) modeNode_->changed();
+}
+
+void Heliostat::setSite(double lat, double lon) {
+    latitude = lat;
+    longitude = lon;
+    if (latitudeNode_) latitudeNode_->changed();
+    if (longitudeNode_) longitudeNode_->changed();
+}
+
+void Heliostat::gps(const GpsFix& fix) {
+    gps_ = fix;
+    if (!followGps || !fix.valid || fix.satellites < kMinSatellites) return;
+    if (fabs(fix.latitude - latitude) > kFollowDegrees || fabs(fix.longitude - longitude) > kFollowDegrees)
+        setSite(fix.latitude, fix.longitude);
+}
+
+bool Heliostat::siteFromGps() {
+    if (!gps_.valid || gps_.satellites < kMinSatellites) return false;
+    setSite(gps_.latitude, gps_.longitude);
+    return true;
 }
 
 void Heliostat::artnet(int coordinate, float degrees) {

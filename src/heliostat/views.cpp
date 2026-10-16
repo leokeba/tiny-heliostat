@@ -32,4 +32,9 @@ void mountTree(tesser::Api& api, Heliostat& helio, tessermotion::Axis& azimuth, 
     api.mount("motion", motion).label("Control loop").ui("icon", "chart").ui("group", "Axes");
 }
 
+void mountSensors(tesser::Api& api, tessermotion::NmeaGps& gps, tessermotion::Tilt& tilt) {
+    api.mount("gps", gps).label("GPS").ui("icon", "broadcast").ui("group", "Sensors");
+    api.mount("tilt", tilt).label("Tilt").ui("icon", "target").ui("group", "Sensors");
+}
+
 }  // namespace heliostat
