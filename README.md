@@ -18,7 +18,9 @@ A classic ESP32 DevKitC (4 MB flash), a TB6612FNG driving two geared DC motors (
 
 ## Updates
 
-Each push to `main` publishes a release. The heliostat checks for one daily, and installs it from `/sys/firmware/github`. A new board takes `tiny-heliostat-esp32-factory.bin` at offset 0 over USB. It can also be reached from [TesserUI's launcher](https://leokeba.github.io/TesserKIT/): by its address, over USB, or listed nearby.
+Each push to `main` publishes a release, built against the library commits in [`deps.lock`](deps.lock) (`scripts/pin.sh` updates it). The heliostat checks for one daily, and installs it from `/sys/firmware/github`.
+
+The [launcher](https://leokeba.github.io/tiny-heliostat/) reaches a heliostat by its address or over USB, and installs the firmware on a new board over USB (Chrome or Edge on a computer), then sets up its Wi-Fi. On a Mac, the bridge in each [release](https://github.com/leokeba/tiny-heliostat/releases/latest) (`tiny-heliostat-bridge-macos-arm64.zip` for Apple silicon, `-x64.zip` for Intel) lists the heliostats on the network and serves the same launcher on localhost, in any browser. It isn't notarized: macOS asks once to open it (*System Settings*, *Privacy & Security*, *Open Anyway*). Without either, `tiny-heliostat-esp32-factory.bin` goes at offset 0 over USB.
 
 ## License
 

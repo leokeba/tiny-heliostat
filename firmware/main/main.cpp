@@ -5,9 +5,9 @@
 // tree.
 //
 // Flash it, join the "heliostat-xxxx" network from a phone, and the
-// interface opens; or reach it from TesserUI's launcher
-// (https://leokeba.github.io/TesserKIT/): over USB, by its address, or listed
-// under Nearby by TesserUI's bridge. A fresh heliostat boots in manual mode
+// interface opens; or reach it from its launcher
+// (https://leokeba.github.io/tiny-heliostat/, pages/index.html): over USB, by
+// its address, or listed under Nearby by the bridge each release carries. A fresh heliostat boots in manual mode
 // with its motors off: check the axes' offsets, motor directions and limits,
 // then turn /heliostat/enabled on.
 //
@@ -116,7 +116,7 @@ extern "C" void app_main() {
         helio.sync(nowMs, epochMs());
     });
 
-    dev.cors("https://leokeba.github.io");  // the launcher, reaching the heliostat by its address
+    dev.cors("https://leokeba.github.io");  // the launchers (its own, TesserKIT's), reaching it by its address
     dev.begin();  // loads the stored settings
     serialApi.begin();
     motion.start(50);

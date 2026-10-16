@@ -1,0 +1,12 @@
+# The sibling commits the heliostat builds against: the host build
+# (CMakeLists.txt warns when a checkout beside this repository isn't one),
+# the firmware CI releases, the launcher and the bridge
+# (.github/workflows/release.yml). One owner/repo@sha per line, TesserKIT's
+# own deps.lock for the ones it shares. Update it with scripts/pin.sh, after
+# the siblings' commits are pushed, and commit it with the change that needs
+# them.
+leokeba/TesserAPI@65ee0175ffaff71a59f186fd362526c208a8f9d5
+leokeba/TesserUI@fc29e6a8c0340271cd114d5f19d1fb6c3850ad97
+leokeba/NowTP@7586949dfea84c3a09039bb0086a255ff838928e
+leokeba/TesserKIT@b358e14e50ab6d683f2073b9f707f26f500986ec
+leokeba/TesserMotion@fe415fb8a64681dbc1a10a7978cf46a9288f2707

@@ -273,7 +273,8 @@ Served from flash with `dev.web().asset("/ext/<name>.js", ..., gzipped)`, gzippe
 
 ## 8. Persistence and first flash
 
-- TesserAPI persistence in NVS (TesserKIT §6): one record per top-level node, debounced 2 s. Stored backups in `Files` (LittleFS).
+- TesserAPI persistence (TesserKIT §6): one record per top-level node, debounced 2 s, holding only what differs from the defaults. On `Files`' LittleFS (`/.settings`, which no request reaches) since TesserKIT b358e14: the first boot of such a firmware moves the records from NVS, which keeps its copy as a fallback for a boot whose filesystem doesn't mount (TesserKIT §6.1); `/sys/status/settings` says when they are still in NVS, and why. The stored backups are in `Files` too.
+- **Settings versions** (TesserKIT §6.3): TesserKIT migrates `/sys`; the heliostat sets no version of its own (`dev.settingsVersion()`) while none of its persisted defaults has changed. One that changes needs one, with a migration dropping the old default from the records stored before.
 - **Partition table:** TesserKIT's `tesserkit_4mb_files.csv` (two 1.75 MB OTA slots, 384 KB of LittleFS for `Files`, a core dump) replaces helionext's `min_spiffs.csv`. A partition table can't change over OTA, so the first flash is over USB (bootloader too: rollback is a bootloader setting). Updates are OTA after that. The heliostat had `tesserkit_4mb.csv` (no filesystem) from 2026-10-11 and moved to this table over USB on 2026-10-12. NVS is at the same offset in both, so the settings stayed; the `files` partition, over the old second slot, was formatted at its first mount.
 - **Settings** aren't migrated: helionext's LittleFS files go with the old table. The offsets and limits noted before flashing (§3), the site and the directions are entered again in the interface, and saved with `/sys/backup`: stored on the heliostat (`save`, the 10 newest kept, each restore storing what it replaces first) or downloaded.
 
@@ -289,13 +290,18 @@ tiny-heliostat/
     main/                   main.cpp, board.h, secrets.h (gitignored)
   web/elements/             sky.js; build.mjs → src/heliostat/elements.h
   test/                     host tests (TesserMotion's check.h and plant), e2e_heliostat.py
-  .github/workflows/        release.yml: host tests, then a firmware release
+  pages/index.html          the launcher's page: GitHub Pages, and the bridge's executables
+  deps.lock                 the sibling commits builds and releases use; scripts/pin.sh sets it, cmake/deps.cmake checks the checkouts
+  .github/workflows/        release.yml: host tests, a firmware release, the bridge, the launcher
   README.md, LICENSE (MIT), AGENTS.md (gitignored)
 ```
 
 - **ESP-IDF** (≥ 5.2, TesserMotion's floor for the I2C master driver). TesserAPI, TesserUI, TesserKIT, TesserMotion and NowTP found as siblings in `~/Dev` (`EXTRA_COMPONENT_DIRS`), then through the component manager once they are published.
+- **Pinned siblings,** as TesserKIT pins its own (its `deps.lock`): `deps.lock` lists the commit of each library the heliostat builds against, which the host tests, the release and the launcher use. Local builds keep using the checkouts beside the repository, with a CMake warning for each one that isn't the pinned commit. `scripts/pin.sh` pins the checkouts' HEADs (or `TesserKIT=b358e14`), refuses commits GitHub doesn't have, and notes a sibling pinned at another commit than TesserKIT's own `deps.lock` at the pinned TesserKIT: the libraries TesserKIT shares are pinned at its commits unless the heliostat needs a newer one.
 - `sdkconfig.defaults`: TesserKIT's example's (the table with Files, rollback, core dump to flash, WebSocket, `-Os`, logs at warnings).
-- **Releases:** each push to `main` runs the host tests, then TesserKIT's reusable `firmware.yml` builds the firmware against the libraries' `main` branches (its ESP-IDF 5.5 image: 6.1-dev saves 15 KB of flash the heliostat doesn't need, and left 9 KB less heap at its lowest, 39 KB against 48 KB during the release check, measured on the heliostat on 2026-10-14) and publishes `vX.Y.Z` (the last tag's patch raised) with `tiny-heliostat-esp32.bin`, what `/sys/firmware/github` installs, and `tiny-heliostat-esp32-factory.bin`, the whole flash for a new board. `[skip ci]` in a commit message releases nothing.
+- **Releases:** each push to `main` runs the host tests, then TesserKIT's reusable `firmware.yml` builds the firmware against `deps.lock`'s commits, named at the top of the release notes (its ESP-IDF 5.5 image: 6.1-dev saves 15 KB of flash the heliostat doesn't need, and left 9 KB less heap at its lowest, 39 KB against 48 KB during the release check, measured on the heliostat on 2026-10-14) and publishes `vX.Y.Z` (the last tag's patch raised) with `tiny-heliostat-esp32.bin`, what `/sys/firmware/github` installs, and `tiny-heliostat-esp32-factory.bin`, the whole flash for a new board. The release fails when the image leaves under 16 KB free in its slot (`min-free`), the room the next update needs; `firmware.yml` warns under 5 %. `[skip ci]` in a commit message releases nothing.
+- **The launcher** (`pages/index.html`, TesserUI §9.7) is deployed to GitHub Pages (https://leokeba.github.io/tiny-heliostat/) after each release, with TesserUI's bundle and flasher at the pinned commit and the latest three releases' factory images: it reaches a heliostat over USB or by its address, and installs the firmware on a new board over USB, then sets up its Wi-Fi. The x-sky element comes from the heliostat itself (§7.2). The page needs the repository's Pages set to GitHub Actions.
+- **The bridge:** each release also carries `tiny-heliostat-bridge-macos-arm64.zip` and `-x64.zip`, TesserUI's bridge compiled with this launcher built in (TesserUI's reusable `bridge.yml`): run on a Mac, it lists the heliostats on the network under Nearby (mDNS), proxies them so they are live from any browser, and installs the latest releases' images, fetched from GitHub. Signed ad hoc, not notarized: macOS asks once (*Privacy & Security*, *Open Anyway*). The launcher's Nearby card links to the latest release's.
 - Conventions: the Tesser libraries' (C++17, no exceptions, no RTTI, `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror` on the host, `uv` for Python, `pnpm` for the element build, Wi-Fi credentials only in gitignored `secrets.h`, no `Co-Authored-By` lines).
 
 ## 10. Footprint
@@ -356,6 +362,7 @@ TesserMotion's phases 2–4 (axes, sequencer, GPS) come before the heliostat's h
 | A select whose options are a keyed list's keys (`ui.options "directions"`, `ui.optionsExtra "Sun"`) | TesserUI | `source`, `target` as dropdowns | done, TesserUI 31f890f |
 | `device.mjs --elements <dir>` | TesserUI | the simulator serves `web/elements/` | done, TesserUI 77946c9 |
 | TesserAPI added only `if(NOT TARGET tesser_core)` in host builds | TesserUI, TesserKIT | the simulator's build combines them with TesserMotion | done, TesserUI b43d293, TesserKIT a439b27 |
+| Pin TesserAPI in TesserMotion's host build when it fetches it (it fetches `main` without a sibling checkout), as TesserKIT does with its `deps.lock` | TesserMotion | reproducible builds of TesserMotion alone; the heliostat checks TesserAPI out itself | to ask |
 | `x-sky` options: a named target, click to select, a source other than the sun, the park position | TesserUI example | §7.2 | TesserUI prefers options of its example: diff to send once the variant in `web/elements/` has run on the heliostat |
 
 ## 14. Open questions

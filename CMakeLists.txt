@@ -76,6 +76,13 @@ foreach(dep TesserUI TesserKIT)
     add_subdirectory("${${DEP}_DIR}" "${CMAKE_BINARY_DIR}/${dep_lower}")
 endforeach()
 
+# Each checkout against deps.lock: a warning when it isn't the pinned commit.
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/deps.cmake")
+foreach(dep TesserAPI TesserUI TesserKIT TesserMotion)
+    string(TOUPPER ${dep} DEP)
+    heliostat_check_sibling(${dep} "${${DEP}_DIR}")
+endforeach()
+
 set(HELIOSTAT_WARNINGS -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror -fno-exceptions -fno-rtti)
 
 add_library(heliostat_core ${HELIOSTAT_SRCS})

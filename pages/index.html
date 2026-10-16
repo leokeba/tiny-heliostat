@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="description" content="Reach a tiny-heliostat over USB or the network, or install its firmware on a board: TesserUI's launcher." />
+    <title>Heliostat</title>
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <!-- TesserUI's bundle, published by .github/workflows/release.yml with the
+         firmware it serves, and built into the bridge's executables. A
+         launcher: it opens ?api=, or the heliostat the user picks (TesserUI's
+         DESIGN.md section 9.7). It installs the latest releases over USB,
+         which the workflow copies next to it, then sets up the heliostat's
+         Wi-Fi (section 9.7.1). The sky element comes from the heliostat
+         itself (/ext/sky.js). -->
+    <script>
+      window.TESSER = {
+        launcher: true,
+        title: 'Heliostat',
+        firmware: {
+          images: [
+            {
+              label: 'tiny-heliostat',
+              asset: 'tiny-heliostat-{target}-factory.bin',
+              description:
+                'A classic ESP32 with a TB6612 and two MT6701 encoders. Installing resets the settings; the motors stay off until enabled.',
+            },
+          ],
+          wifi: '/sys/network/wifi',
+        },
+        // Nearby links to the bridge's executables on this repository's
+        // latest release (release.yml's bridge job).
+        bridge: { repo: 'leokeba/tiny-heliostat', name: 'tiny-heliostat-bridge' },
+      };
+    </script>
+    <script src="ui.js"></script>
+  </body>
+</html>
