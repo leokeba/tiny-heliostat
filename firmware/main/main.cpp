@@ -68,6 +68,16 @@ Motion motion;
 heliostat::Tracker tracker(azimuth, elevation);
 heliostat::Heliostat helio(tracker, azimuth, elevation, &bridge);
 
+// The heliostat's favicon, instead of TesserKIT's (DESIGN section 7.1): the
+// sun, its light off a level mirror on a stand into a target, in TesserKIT's
+// blue and strokes. Inlined in the generated page; pages/index.html has it too.
+const char kIcon[] =
+    "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none' "
+    "stroke-linecap='round' stroke-linejoin='round'>"
+    "<path d='M6 6h0' stroke='%23f59e0b' stroke-width='10'/>"
+    "<path d='M9 10l7 8 8-9m6-3.5a3.5 3.5 0 1 1-7 0 3.5 3.5 0 1 1 7 0' stroke='%23f59e0b' stroke-width='3'/>"
+    "<path d='M4 20h24M16 20v9M10 29h12' stroke='%232f5bd3' stroke-width='4'/></svg>";
+
 // The GPS sets the clock at most this often (DESIGN section 5.7).
 constexpr uint32_t kGpsClockEveryMs = 60000;
 
@@ -115,6 +125,7 @@ extern "C" void app_main() {
     heliostat::addViews(views);
     namespace el = heliostat::elements;
     dev.web().asset(el::kSkyPath, el::kSky, sizeof(el::kSky), "text/javascript", true);
+    dev.web().icon(kIcon);
 
     // Nothing moves while new firmware is written.
     dev.onState([](tesserkit::State s) {

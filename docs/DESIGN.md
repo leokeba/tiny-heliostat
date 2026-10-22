@@ -231,16 +231,16 @@ Persisted nodes are marked *(p)*. Access: reads are public; operating nodes (mod
 
 | Path | Part | Tree |
 |---|---|---|
-| `/azimuth`, `/elevation` | `Axis` | TesserMotion §9.1, without `autotune/` (§13) |
+| `/azimuth`, `/elevation` | `Axis` | TesserMotion §9.1, without `autotune/` (§13); `sensor/correction/` fits the MT6701's error to reference points (TesserMotion §4.2), unused for now (no calibration, §15) |
 | `/sequence` | `Sequencer`, tracks `azimuth`, `elevation` | TesserMotion §9.2 |
 | `/gps` | `NmeaGps` ("GPS", in the menu's Sensors group) | TesserMotion §9.3 |
-| `/tilt` | `Tilt` over `Adxl345`, on the azimuth's I2C bus ("Tilt", Sensors) | TesserMotion §9 |
+| `/tilt` | `Tilt` over `Adxl345`, on the azimuth's I2C bus ("Tilt", Sensors); `correction/` fits the sensor's bias and scale to still poses (TesserMotion §6.1) | TesserMotion §9 |
 | `/motion` | `Motion` statistics, `stopAll` ("Control loop", in the menu's Axes group) | TesserMotion §9.4 |
 | `/sys/...` | `System`, `Network`, `Time`, `Firmware`, `Files`, `Backup`, `Timers`, `Auth`, `NowTp`, `UdpApi`, `Peers`, `Log` | TesserKIT §5 |
 | `/peers` | the TesserKIT nodes `NowTp` and `UdpApi` find, each with its page | TesserKIT §5.11, §5.18, §5.19 |
 | `/sys/artnet` | TesserKIT's Art-Net service, if accepted (§5.6) | — |
 
-TesserKIT's `Network` names the device `heliostat-xxxx` (from the label "Heliostat"); the AP is in fallback mode. `Firmware` takes uploads and installs this repository's GitHub releases (`firmware.github()`, §9), checked a minute after coming online, then daily and on demand, and URLs too: about 130 KB of TLS, and a check waits for 44 KB of free heap. TesserKIT's `onState()` calls `motion.stopAll()` when an update starts (TesserMotion §3.2).
+The device's name is `/sys/name` (TesserKIT §4.4), the label "Heliostat" until the user gives it one: the header, and the heliostat's tab in a gateway's or the launcher's tab bar. TesserKIT's `Network` names the host after it: `heliostat-xxxx` from the label (the MAC's end), or the name made a hostname once one is given ("Heliostat sud" → `heliostat-sud`), unless `/sys/network/hostname` says otherwise; the AP is in fallback mode. `Firmware` takes uploads and installs this repository's GitHub releases (`firmware.github()`, §9), checked a minute after coming online, then daily and on demand, and URLs too: about 130 KB of TLS, and a check waits for 44 KB of free heap. TesserKIT's `onState()` calls `motion.stopAll()` when an update starts (TesserMotion §3.2).
 
 The heliostat's launcher (https://leokeba.github.io/tiny-heliostat/, §9), like TesserKIT's, reaches it three ways: by its address (`dev.cors()` for the launcher's origin), over USB (TesserAPI's `UartTransport` on UART 0, with Admin access: whoever holds the cable holds the board; logs at warnings, so that few land in the middle of a reply), and through TesserUI's bridge, which finds it over mDNS (`_tesser._tcp`). On macOS, opening the port restarts the board.
 
@@ -253,6 +253,8 @@ Bluetooth is left out (about 200 KB of flash and 45 KB of heap; Leo, 2026-10-12)
 ### 7.1 Pages
 
 `x-sky` is placed by the view, not as `/heliostat`'s widget: on the node it would replace the generic card that holds the mode, the site and the park. The views are declared once (`heliostat::addViews()`) for the firmware and the simulator.
+
+The page's favicon is the heliostat's (`dev.web().icon()`, TesserUI §9.4), inlined as an SVG `data:` URL (350 bytes, no request): the sun, its light off a level mirror on a stand into a target ring, in TesserKIT's blue and stroke weight with an amber sun, so a tab reads as a TesserKIT device and as this one. The launcher's page carries the same.
 
 TesserUI draws the root as cards: Heliostat, Azimuth, Elevation, Sequence, GPS, and `/sys` as its own page. Views (TesserUI §8, `tesserui::Views` on `dev.api()`) put daily use first:
 
@@ -320,6 +322,8 @@ tiny-heliostat/
 **Measured** (2026-10-12, same toolchain): with `Files`, `NowTp`, GitHub releases (TLS) and the serial line, 1.40 MB (0x165da0), 20 % of the 1.75 MB slot free. On the heliostat, 114 KB of heap free once online, 95 KB at the lowest.
 
 **Measured** (2026-10-14, ESP-IDF 5.5, the libraries of that day): with `UdpApi`, `Peers` and `Log`, 1.52 MB (1,591,424 bytes), 13 % of the slot free (1.50 MB with 6.1-dev). On the heliostat, 99 KB of heap free once online, 48 KB at the lowest (the release check's TLS); the three services cost about 17 KB of heap.
+
+**Measured** (2026-10-22, ESP-IDF 6.1-dev, on the heliostat): with the node's name, NowTP's network time polled from TesserKIT's task, TesserUI's widget chunk and the angle and tilt corrections (TesserKIT 5757e78, TesserMotion 8a4f137), 1.62 MB (1,703,792 bytes), 7.1 % of the slot free. 80 KB of heap free once online, 23 KB at the lowest, during the release check with no client attached (v0.1.3, ESP-IDF 5.5: 32 KB at the lowest after an hour). The control loop: no overruns, 4.7 ms at the longest of its 20 ms.
 
 ## 11. Testing
 
